@@ -1,23 +1,34 @@
-MSFS 2024 – Livery 4K Converter 1.3 (NVIDIA-BC7)
-=================================================
+MSFS 2024 – Livery 4K Converter 1.4 (Full Package)
+==================================================
+
+WAS NEU IN VERSION 1.4
+----------------------
+- Der Zielordner wird jetzt als vollständige Kopie des Quellordners aufgebaut.
+- ALLE Dateien werden übernommen: manifest.json, layout.json, CFG/JSON/XML, Thumbnails,
+  Dokumente, sonstige Dateien und alle Texturen.
+- Texturen, die bereits 4K oder kleiner sind, bleiben unverändert.
+- Nur zu große unterstützte Texturen werden im Zielordner verkleinert.
+- Die Ordnerstruktur und die Dateinamen bleiben erhalten.
+- Optional kann MSFSLayoutGenerator.exe nach der Konvertierung automatisch ausgeführt
+  werden, um layout.json und – sofern vorhanden – total_package_size in manifest.json
+  zu aktualisieren.
+- Die Quelldateien werden niemals verändert.
 
 WAS DAS PROGRAMM MACHT
 ----------------------
-- Durchsucht einen ausgewählten Lackierungs-/Texturordner einschließlich Unterordnern.
+- Durchsucht einen ausgewählten Lackierungs-/Paketordner einschließlich Unterordnern.
+- Erstellt im Zielordner eine vollständige Dateikopie.
 - Verkleinert nur Bilder, deren Breite ODER Höhe größer als die eingestellte Kantenlänge ist.
 - Passt die Abmessungen proportional an; das Seitenverhältnis bleibt erhalten.
-- Erhält Dateinamen und Unterordnerstruktur.
-- Schreibt neue Texturen in einen separaten Zielordner.
-- Ändert oder löscht niemals die Originaldateien.
 - Bei DDS werden Mipmaps neu erstellt.
-- Bei unterstützten KTX2-Dateien wird die Textur auf die Zielgröße skaliert, neu codiert
-  und die Mipmap-Kette neu erzeugt.
+- Bei unterstützten KTX2-Dateien wird die Textur auf Zielgröße skaliert, neu codiert und
+  die Mipmap-Kette neu erzeugt.
 - Native BC7-KTX2-Dateien (VK_FORMAT_BC7_UNORM_BLOCK und VK_FORMAT_BC7_SRGB_BLOCK)
   werden über DirectXTex/texconv verkleinert und wieder als KTX2 verpackt.
 - Die BC7-Neukomprimierung kann DirectCompute auf einer NVIDIA-GPU verwenden; alternativ
   kann in der Programmoberfläche die CPU-Verarbeitung gewählt werden.
-- Die vorhandenen KTX2-DFD- und Key/Value-Metadaten bleiben bei diesem BC7-Weg erhalten,
-  einschließlich der ASOBO-Schlüssel wie ASOBO_flags und ASOBOtexversion.
+- Beim BC7-KTX2-Weg bleiben der KTX2-DFD- und der Key/Value-Metadatenblock erhalten,
+  einschließlich ASOBO-Schlüsseln wie ASOBO_flags und ASOBOtexversion.
 
 VORAUSSETZUNGEN (WINDOWS 10/11)
 -------------------------------
@@ -37,12 +48,17 @@ VORAUSSETZUNGEN (WINDOWS 10/11)
    Windows-Version herunterladen und entpacken von:
    https://github.com/KhronosGroup/KTX-Software/releases
 
-   Im Programm anschließend die Datei "ktx.exe" aus dem Ordner "bin" auswählen.
-   Die KTX-Software stellt die Befehle zum Prüfen, Extrahieren und Neuerstellen
-   standardkonformer KTX2-Dateien bereit.
+   Im Programm anschließend "ktx.exe" aus dem Ordner "bin" auswählen.
 
-4. Pillow für normale Bilddateien installieren:
+4. Pillow installieren:
    python -m pip install -r requirements.txt
+
+5. MSFS Layout Generator (für fertige MSFS-Paketordner empfohlen):
+   Release herunterladen:
+   https://github.com/HughesMDflyer4/MSFSLayoutGenerator/releases/latest
+
+   Die Datei "MSFSLayoutGenerator.exe" an einem festen Ort speichern und im Konverter
+   bei "Layout-Tool" auswählen. Sie muss nicht in den Programmordner kopiert werden.
 
 STARTEN
 -------
@@ -50,114 +66,111 @@ Doppelklick auf "Starten.bat".
 
 BEDIENUNG
 ---------
-1. Quellordner auswählen – beispielsweise den Ordner einer MSFS-Lackierung.
-2. Zielordner auswählen. Vorschlag: ein neuer Ordner mit dem Zusatz "_4K".
-3. Für DDS/Bilddateien texconv.exe auswählen, falls sie nicht automatisch gefunden wurde.
-4. Für KTX2-Dateien ktx.exe auswählen, falls sie nicht automatisch gefunden wurde.
-5. Maximale Kantenlänge 4096 belassen.
-6. Für BC7 die GPU-Beschleunigung eingeschaltet lassen. Standardmäßig wird DirectCompute-Adapter 0 verwendet.
-   Falls du mehrere Grafikkarten hast und Adapter 0 nicht die NVIDIA-Karte ist, teste Adapter 1.
-   Wenn die GPU-Konvertierung fehlschlägt, Häkchen entfernen, um den CPU-Modus zu verwenden.
-7. "Konvertierung starten" anklicken.
+1. Als Quellordner den STAMMORDNER der vollständigen Lackierung/des Pakets auswählen.
+   Das ist üblicherweise der Ordner, in dem manifest.json und layout.json liegen.
+   Nicht nur den texture-Unterordner auswählen.
+2. Einen separaten Zielordner auswählen. Der vorgeschlagene Name endet auf "_4K".
+3. texconv.exe auswählen, falls sie nicht automatisch gefunden wurde.
+4. ktx.exe auswählen, falls KTX2-Dateien vorhanden sind und das Programm sie nicht findet.
+5. MSFSLayoutGenerator.exe im Feld "Layout-Tool" auswählen.
+6. Maximale Kantenlänge 4096 belassen.
+7. Für BC7 die GPU-Beschleunigung eingeschaltet lassen. Standardmäßig wird DirectCompute-
+   Adapter 0 verwendet. Bei Hybrid-Notebooks ggf. Adapter 1 testen.
+8. "Konvertierung starten" anklicken.
 
-Beispiele:
+Der Konverter kopiert zuerst sämtliche Dateien in den Zielordner. Danach werden nur die
+zu großen unterstützten Texturen im Zielordner ersetzt. Schlägt eine Texturkonvertierung
+fehl, bleibt die zuvor kopierte Originaldatei im Zielordner erhalten.
+
+WICHTIG ZUM ZIELORDNER
+----------------------
+- Für ein sauberes Ergebnis möglichst einen neuen, leeren Zielordner verwenden.
+- Wenn der Zielordner bereits Dateien enthält, werden Dateien mit gleichem relativen Pfad
+  überschrieben. Zusätzliche Altdateien, die nicht mehr in der Quelle vorkommen, werden
+  aus Sicherheitsgründen NICHT automatisch gelöscht.
+- Der Quellordner bleibt immer unverändert.
+
+MSFS LAYOUT.JSON – BRAUCHE ICH MSFSLayoutGenerator.exe?
+-------------------------------------------------------
+Wenn der Quellordner eine layout.json enthält und Texturen verkleinert werden, sollte
+layout.json nach der Konvertierung aktualisiert werden. Die Datei listet die Paketdateien
+mit ihren Dateigrößen und Änderungszeiten auf. Nach einer Texturänderung stimmen diese
+Angaben nicht mehr mit den Dateien überein.
+
+Wenn "MSFSLayoutGenerator.exe" im Konverter ausgewählt ist, wird sie nach dem Kopieren
+und Konvertieren automatisch mit der layout.json im Zielordner aufgerufen. Das Tool baut
+die Dateiliste neu auf und aktualisiert in manifest.json auch total_package_size, sofern
+diese Eigenschaft im Manifest vorhanden ist.
+
+Wenn du das Layout-Tool nicht hinterlegst, werden alle Dateien trotzdem kopiert und die
+Texturen trotzdem konvertiert. Der Konverter weist am Ende aber darauf hin, dass layout.json
+noch aktualisiert werden muss. Du kannst dann die ZIEL-layout.json auf MSFSLayoutGenerator.exe
+ziehen oder sie über das MSFS-SDK/den Package-Workflow neu erstellen.
+
+Die MSFSLayoutGenerator.exe ist also nicht die Textur-Konvertierungsengine. Sie wird zum
+Aktualisieren der Paketdateiliste benötigt (oder ein entsprechender SDK-/Layout-Workflow).
+Für einen direkt verwendbaren Community-Paketordner empfehlen wir, sie einzubinden.
+
+Beispiele für die Größenanpassung:
   8192 × 8192  ->  4096 × 4096
   8192 × 4096  ->  4096 × 2048
   8192 × 2048  ->  4096 × 1024
-  4096 × 4096  ->  bleibt unverändert (wird übersprungen)
+  4096 × 4096  ->  bleibt unverändert
 
 KTX2-UNTERSTÜTZUNG UND GRENZEN
 -----------------------------
 Unterstützt werden standardkonforme 2D-KTX2-Texturen mit folgenden Formaten:
-- BC7 UNORM und BC7 sRGB (VK_FORMAT_BC7_UNORM_BLOCK / VK_FORMAT_BC7_SRGB_BLOCK).
-  Diese werden als BC7-Rohdaten in einen temporären DDS-Container übernommen, mit
-  DirectXTex/texconv verkleinert und anschließend wieder als KTX2 verpackt. Der KTX2-DFD
-  und der komplette Key/Value-Metadatenblock werden dabei aus dem Original übernommen.
-  Das erhält auch ASOBO-Metadaten wie ASOBO_flags, ASOBO_opacities, ASOBO_transp und
-  ASOBOtexversion.
+- BC7 UNORM und BC7 sRGB.
 - UASTC / ETC1S (BasisLZ), sofern sie von der installierten KTX-Software gelesen werden.
 - ASTC LDR-Texturen.
 - 8-Bit RGB/RGBA UNORM- und sRGB-Texturen.
 
 Die BC7-Neukomprimierung verwendet Microsoft DirectXTex/texconv. Mit aktivierter GPU-Option
-übergibt das Programm den DirectCompute-Adapterindex über die texconv-Option `-gpu`.
-Microsoft dokumentiert diese GPU-Beschleunigung ausdrücklich für BC6H/BC7. Adapter 0 ist
-der Standardadapter; auf Hybrid-Notebooks kann die NVIDIA-GPU unter Index 1 erreichbar sein.
-Die Indexnummer ist der DirectX-/DirectCompute-Adapterindex und nicht zwingend identisch
-mit der CUDA-Gerätenummer.
+übergibt das Programm den DirectCompute-Adapterindex über die texconv-Option -gpu.
+Die Adapter-ID ist die DirectX-/DirectCompute-Gerätenummer und nicht zwingend identisch mit
+der CUDA-Gerätenummer.
 
-Das Bild wird beim Verkleinern neu gefiltert und BC7 erneut komprimiert; dadurch können
-Dateigröße und Kompressionsqualität vom Original abweichen. Die Mipmap-Kette wird neu
-aufgebaut. Der BC7-Weg verarbeitet normale 2D-Texturen; Arrays und Cubemaps werden nicht
-automatisch verändert.
-
-WICHTIG: Einige MSFS-2024-Dateien sind keine normalen, öffentlich lesbaren KTX2-Dateien.
-Dateien mit dem Supercompression-Kennwert 65536 werden erkannt und übersprungen, statt
-eine beschädigte Datei zu erzeugen. Die in manchen Lackierungen vorhandenen ASOBO_*-
-Metadaten sind für sich genommen kein Fehler; beim BC7-Weg bleiben sie erhalten. Für genau diese MSFS-Sondervariante bietet das
-separate Programm "MSFS Livery Toolkit" eine Extraktion in PNG an:
+Einige MSFS-2024-Dateien sind keine normalen, öffentlich lesbaren KTX2-Dateien. Dateien
+mit dem Supercompression-Kennwert 65536 werden erkannt, unverändert kopiert und für die
+Konvertierung übersprungen. Für solche Dateien ist ggf. eine Extraktion über das MSFS
+Livery Toolkit und anschließendes Neu-Bauen des Pakets mit dem MSFS-SDK notwendig:
 https://github.com/theflaknine/MSFS-Livery-Toolkit/releases/latest
 
-Vorgehensweise für Kennwert 65536:
-1. Die betreffende Textur mit "MSFS Livery Toolkit" über dessen Texture-Extraction-
-   Funktion als PNG extrahieren.
-2. Den Ordner mit diesen PNG-Dateien in diesem 4K Converter als Quelle auswählen.
-3. PNGs auf 4096 Pixel verkleinern lassen.
-4. Die verkleinerten PNGs im Livery-Projekt verwenden und das Paket anschließend über
-   den MSFS-2024-SDK neu kompilieren.
-
-Die Extraktion aus dieser Sonderkomprimierung ist in dieser kleinen Anwendung nicht
-als automatischer Schritt eingebaut: Für das externe Toolkit ist keine unterstützte
-Kommandozeilenschnittstelle zur automatischen Übergabe dokumentiert.
-
-Gleiches gilt hier für nicht unterstützte Pixel-Formate, 3D-Texturen, Texture-Arrays,
-Cubemaps und premultiplizierte Alpha-Texturen.
-
 KTX2P-Dateien sind gepackte Streaming-Dateien und keine einzelnen Texturen; sie werden
-nicht verarbeitet.
+unverändert mitkopiert, aber nicht als Bildtexturen verarbeitet.
 
-WICHTIGE MSFS-HINWEISE
----------------------
-- Vor dem Einbau in den Community-Ordner die konvertierte Lackierung testen.
-- Den neuen Zielordner verwenden und die Original-Lackierung als Backup behalten.
-- Bei bereits gebauten MSFS-Paketen ist das direkte Ändern der kompilierten Texturen
-  nicht der empfohlene SDK-Arbeitsablauf. Wenn möglich, die Quelldateien verkleinern
-  und das Paket anschließend mit dem MSFS-2024-SDK neu bauen.
-- Marketplace- bzw. anderweitig proprietär geschützte Inhalte können nicht mit
-  allgemeinen KTX-Werkzeugen bearbeitet werden.
+MSFS-HINWEISE
+-------------
+- Quellordner möglichst als vollständige Paketwurzel auswählen (manifest.json/layout.json).
+- Den erzeugten Zielordner als separates Paket testen und das Original als Backup behalten.
+- Bei Änderungen an bereits kompilierten/geschützten Add-ons kann ein Neu-Build mit dem
+  MSFS-2024-SDK erforderlich sein.
+- Achte darauf, dass das Add-on ausdrücklich mit MSFS 2024 kompatibel ist.
 
 FEHLERBEHEBUNG
 --------------
 "texconv.exe fehlt":
   winget install Microsoft.DirectXTex.Texconv
-  Danach texconv.exe im Programm auswählen.
 
 "ktx.exe fehlt":
-  Khronos KTX-Software über den oben genannten Release-Link herunterladen,
-  entpacken und die ktx.exe aus dem bin-Ordner auswählen.
+  Khronos KTX-Software installieren und die ktx.exe aus dem bin-Ordner auswählen.
 
-"VK_FORMAT_BC7_UNORM_BLOCK wird nicht unterstützt":
-  In Version 1.3 wird BC7 nicht mehr über PNG dekodiert. BC7-KTX2
-  wird im Rohdatenmodus gelesen, über texconv als BC7-DDS skaliert und anschließend
-  wieder als KTX2 verpackt. Stelle sicher, dass texconv.exe und ktx.exe ausgewählt sind.
+"layout.json nicht aktualisiert":
+  MSFSLayoutGenerator.exe herunterladen und in der Programmoberfläche bei "Layout-Tool"
+  auswählen. Alternativ die layout.json aus dem ZIELORDNER auf die EXE ziehen.
 
 "Pillow fehlt":
   python -m pip install -r requirements.txt
 
 Lizenzhinweis:
-Dieses Bedienprogramm verwendet Microsoft DirectXTex/texconv und Khronos KTX-Software
-als separate Werkzeuge. Die jeweiligen Projekte und Lizenzbedingungen sind auf den
-oben genannten Projektseiten aufgeführt.
-
+Dieses Bedienprogramm verwendet Microsoft DirectXTex/texconv, Khronos KTX-Software und
+optional MSFSLayoutGenerator als separate Werkzeuge. Es enthält diese Drittanbieter-Tools
+nicht; deren jeweilige Lizenzbedingungen gelten separat.
 
 GPU-HINWEIS
 -----------
 - Die GPU-Beschleunigung betrifft die BC7-Neukomprimierung in texconv.
-- Aktiviert: texconv wird mit `-gpu <Adapter-Index>` aufgerufen.
-- Deaktiviert: texconv wird mit `-nogpu` im CPU-Modus aufgerufen.
+- Aktiviert: texconv wird mit -gpu <Adapter-Index> aufgerufen.
+- Deaktiviert: texconv wird mit -nogpu im CPU-Modus aufgerufen.
 - Bei Fehlern zuerst Adapter 0/1 wechseln oder CPU-Modus aktivieren.
-- Nicht jede Texturoperation läuft auf der GPU; das Filtern/Verkleinern kann weiterhin
-  teilweise auf der CPU erfolgen.
 
-Offizielle DirectXTex-Dokumentation zur GPU-Option:
-https://github.com/microsoft/DirectXTex/wiki/texconv

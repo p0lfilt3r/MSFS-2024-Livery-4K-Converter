@@ -26,7 +26,7 @@ try:
 except ImportError:
     Image = None  # DDS header reading still works without Pillow.
 
-APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.3 (NVIDIA-BC7)"
+APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.4 (Full Package)"
 SUPPORTED_EXTENSIONS = {
     ".dds", ".png", ".tga", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".ktx2"
 }
@@ -59,6 +59,21 @@ def find_texconv() -> str:
                         return str(candidate)
             except OSError:
                 pass
+    return ""
+
+
+def find_layout_generator() -> str:
+    """Find MSFSLayoutGenerator.exe in PATH or beside this application."""
+    found = shutil.which("MSFSLayoutGenerator.exe") or shutil.which("MSFSLayoutGenerator")
+    if found:
+        return found
+    app_dir = Path(__file__).resolve().parent
+    for candidate in (
+        app_dir / "MSFSLayoutGenerator.exe",
+        app_dir / "tools" / "MSFSLayoutGenerator.exe",
+    ):
+        if candidate.is_file():
+            return str(candidate)
     return ""
 
 
@@ -566,8 +581,8 @@ class ConverterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("960x810")
-        self.root.minsize(820, 700)
+        self.root.geometry("980x890")
+        self.root.minsize(850, 760)
 
         self.events: queue.Queue[tuple] = queue.Queue()
         self.worker: Optional[threading.Thread] = None
@@ -577,6 +592,7 @@ class ConverterApp:
         self.target_var = tk.StringVar()
         self.texconv_var = tk.StringVar(value=find_texconv())
         self.ktx_var = tk.StringVar(value=find_ktx())
+        self.layout_var = tk.StringVar(value=find_layout_generator())
         self.max_size_var = tk.StringVar(value="4096")
         self.use_gpu_var = tk.BooleanVar(value=True)
         self.gpu_index_var = tk.StringVar(value="0")
@@ -615,6 +631,7 @@ class ConverterApp:
         self._path_row(paths, 1, "Zielordner:", self.target_var, self._choose_target, "Ordner auswählen …")
         self._path_row(paths, 2, "texconv.exe:", self.texconv_var, self._choose_texconv, "Datei auswählen …")
         self._path_row(paths, 3, "ktx.exe:", self.ktx_var, self._choose_ktx, "Datei auswählen …")
+        self._path_row(paths, 4, "Layout-Tool:", self.layout_var, self._choose_layout, "Datei auswählen …")
 
         settings = ttk.LabelFrame(outer, text="Einstellungen", padding=12)
         settings.pack(fill="x", pady=(12, 0))
@@ -657,10 +674,26 @@ class ConverterApp:
         note.pack(fill="x", pady=(10, 0))
         ttk.Label(
             note,
-            text="Unterordner werden automatisch einbezogen; die Ordnerstruktur und Dateinamen bleiben erhalten.",
+            text=(
+                "Der Zielordner wird als vollständige Kopie der Lackierung aufgebaut: "
+                "alle Dateien (auch CFG/JSON/XML, Thumbnails und nicht verkleinerte Texturen) "
+                "werden übernommen. Nur zu große Texturen werden im Zielordner ersetzt. "
+                "Unterordner und Dateinamen bleiben erhalten. Am besten einen leeren Zielordner verwenden; "
+                "zusätzliche Altdateien im Zielordner werden nicht automatisch gelöscht."
+            ),
             style="Info.TLabel",
             wraplength=820,
         ).pack(anchor="w")
+        ttk.Label(
+            note,
+            text=(
+                "Paket: Ist im Quellordner eine layout.json vorhanden, kann der MSFS Layout Generator "
+                "sie nach dem Kopieren/Verkleinern automatisch aktualisieren. Das ist für einen "
+                "einsatzbereiten Community-Paketordner wichtig."
+            ),
+            style="Info.TLabel",
+            wraplength=820,
+        ).pack(anchor="w", pady=(3, 0))
         ttk.Label(
             note,
             text=(
@@ -743,6 +776,14 @@ class ConverterApp:
         if selected:
             self.ktx_var.set(selected)
 
+    def _choose_layout(self) -> None:
+        selected = filedialog.askopenfilename(
+            title="MSFSLayoutGenerator.exe auswählen",
+            filetypes=[("MSFSLayoutGenerator.exe", "MSFSLayoutGenerator.exe"), ("Programme", "*.exe"), ("Alle Dateien", "*.*")],
+        )
+        if selected:
+            self.layout_var.set(selected)
+
     def _append_log(self, line: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", line + "\n")
@@ -756,6 +797,7 @@ class ConverterApp:
         target_text = self.target_var.get().strip()
         texconv_text = self.texconv_var.get().strip()
         ktx_text = self.ktx_var.get().strip()
+        layout_text = self.layout_var.get().strip()
         if not source_text or not Path(source_text).is_dir():
             messagebox.showerror("Quellordner fehlt", "Bitte einen gültigen Quellordner auswählen.")
             return
@@ -767,6 +809,22 @@ class ConverterApp:
         if source == target:
             messagebox.showerror("Ungültiger Zielordner", "Quell- und Zielordner dürfen nicht identisch sein.")
             return
+        if source.is_relative_to(target):
+            messagebox.showerror(
+                "Ungültiger Zielordner",
+                "Der Zielordner darf nicht oberhalb des Quellordners liegen. "
+                "Bitte einen separaten Zielordner auswählen.",
+            )
+            return
+        if target.exists() and any(target.iterdir()):
+            proceed = messagebox.askyesno(
+                "Zielordner ist nicht leer",
+                "Vorhandene Dateien mit gleichem relativen Pfad werden überschrieben. "
+                "Dateien, die nicht mehr in der Quelle vorkommen, werden NICHT gelöscht. "
+                "Für eine saubere Paketkopie empfiehlt sich ein leerer Zielordner.\n\nFortfahren?",
+            )
+            if not proceed:
+                return
 
         present_extensions = set()
         try:
@@ -785,6 +843,10 @@ class ConverterApp:
         needs_texconv = bool(present_extensions)
         texconv_path = Path(texconv_text) if texconv_text and Path(texconv_text).is_file() else None
         ktx_path = Path(ktx_text) if ktx_text and Path(ktx_text).is_file() else None
+        layout_path = Path(layout_text) if layout_text and Path(layout_text).is_file() else None
+        if layout_text and layout_path is None:
+            messagebox.showerror("Layout-Tool nicht gefunden", "Die ausgewählte MSFSLayoutGenerator.exe existiert nicht.")
+            return
         if needs_texconv and texconv_path is None:
             messagebox.showerror(
                 "texconv.exe fehlt",
@@ -838,7 +900,7 @@ class ConverterApp:
         )
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(source, target, texconv_path, ktx_path, max_size, gpu_adapter),
+            args=(source, target, texconv_path, ktx_path, layout_path, max_size, gpu_adapter),
             daemon=True,
         )
         self.worker.start()
@@ -854,27 +916,65 @@ class ConverterApp:
         target: Path,
         texconv: Optional[Path],
         ktx: Optional[Path],
+        layout_generator: Optional[Path],
         max_size: int,
         gpu_adapter: Optional[int],
     ) -> None:
+        """Mirror the complete package, then replace only oversized textures."""
+        copied = 0
+        copy_failed = 0
+        converted = 0
+        failed = 0
+        unreadable = 0
+        unsupported = 0
+        layout_result = "nicht vorhanden"
         try:
             files: list[Path] = []
             target_resolved = target.resolve()
             for current_root, dirs, names in os.walk(source):
                 current_path = Path(current_root).resolve()
-                dirs[:] = [d for d in dirs if not (current_path / d).resolve().is_relative_to(target_resolved)]
+                dirs[:] = [
+                    d for d in dirs
+                    if not (current_path / d).resolve().is_relative_to(target_resolved)
+                ]
                 for name in names:
                     candidate = Path(current_root) / name
-                    if candidate.suffix.lower() in SUPPORTED_EXTENSIONS:
+                    if candidate.is_file():
                         files.append(candidate)
 
-            self.events.put(("log", f"Gefundene unterstützte Dateien: {len(files)}"))
-            prepared: list[tuple[Path, int, int, int, int]] = []
-            unreadable = 0
-            unsupported = 0
-            for file_path in files:
+            self.events.put(("log", f"Gefundene Dateien insgesamt: {len(files)}"))
+            self.events.put(("status", "Kopiere vollständige Lackierung …"))
+            target.mkdir(parents=True, exist_ok=True)
+
+            # Copy every file first. This includes manifests, layout.json, cfg/xml/json,
+            # thumbnails, unsupported formats and textures already below the limit.
+            for index, src in enumerate(files, start=1):
                 if self.cancel_event.is_set():
-                    break
+                    self.events.put(("finished", "Abgebrochen.", copied, copy_failed, converted, failed, unreadable, unsupported, layout_result))
+                    return
+                relative = src.relative_to(source)
+                destination = target / relative
+                try:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, destination)
+                    copied += 1
+                except Exception as exc:
+                    copy_failed += 1
+                    self.events.put(("log", f"KOPIERFEHLER: {relative} – {exc}"))
+                self.events.put(("progress", index, max(len(files) * 2, 1)))
+
+            self.events.put(("log", f"Dateien kopiert: {copied}; Kopierfehler: {copy_failed}"))
+
+            # Prepare only supported images that actually need to be resized.
+            prepared: list[tuple[Path, int, int, int, int]] = []
+            supported_count = 0
+            for file_path in files:
+                if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                    continue
+                supported_count += 1
+                if self.cancel_event.is_set():
+                    self.events.put(("finished", "Abgebrochen.", copied, copy_failed, converted, failed, unreadable, unsupported, layout_result))
+                    return
                 try:
                     if file_path.suffix.lower() == ".ktx2":
                         ktx_header = read_ktx2_header(file_path)
@@ -882,9 +982,8 @@ class ConverterApp:
                             unsupported += 1
                             self.events.put((
                                 "log",
-                                f"NICHT DIREKT KONVERTIERBAR (MSFS-KTX2-Kennwert 65536): {file_path.name} "
-                                "– mit MSFS Livery Toolkit als PNG extrahieren, dieses PNG hier verkleinern "
-                                "und anschließend über das MSFS-SDK neu kompilieren. Original bleibt unverändert.",
+                                f"NICHT DIREKT KONVERTIERBAR (MSFS-KTX2-Kennwert 65536): {file_path.relative_to(source)} "
+                                "– unveränderte Originaldatei wurde in den Zielordner kopiert.",
                             ))
                             continue
                     width, height = get_image_dimensions(file_path)
@@ -895,28 +994,21 @@ class ConverterApp:
                         prepared.append((file_path, width, height, new_width, new_height))
                 except Exception as exc:
                     unreadable += 1
-                    self.events.put(("log", f"ÜBERSPRUNGEN (Abmessungen nicht lesbar): {file_path.name} – {exc}"))
+                    self.events.put(("log", f"ÜBERSPRUNGEN (Abmessungen nicht lesbar): {file_path.relative_to(source)} – {exc}"))
 
-            total = len(prepared)
-            self.events.put(("log", f"Zu verkleinernde Texturen: {total}; nicht lesbar: {unreadable}; nicht unterstützt: {unsupported}"))
-            if self.cancel_event.is_set():
-                self.events.put(("finished", "Abgebrochen.", 0, 0, unreadable, unsupported))
-                return
-            if total == 0:
-                self.events.put(("finished", "Keine unterstützte Textur über der eingestellten Kantenlänge gefunden.", 0, 0, unreadable, unsupported))
-                return
+            self.events.put(("log", f"Unterstützte Texturdateien: {supported_count}"))
+            self.events.put(("log", f"Zu verkleinernde Texturen: {len(prepared)}; nicht lesbar: {unreadable}; nicht unterstützt: {unsupported}"))
 
-            converted = 0
-            failed = 0
+            # Replace copied originals only after a successful conversion. If a conversion
+            # fails, the untouched source version remains in the target package.
+            total_work = max(len(files) + len(prepared), 1)
             for index, (src, old_w, old_h, new_w, new_h) in enumerate(prepared, start=1):
                 if self.cancel_event.is_set():
                     break
                 relative = src.relative_to(source)
-                destination_folder = target / relative.parent
-                destination_folder.mkdir(parents=True, exist_ok=True)
-                desired = destination_folder / src.name
-
-                self.events.put(("status", f"{index}/{total}: {src.name} ({old_w}×{old_h} → {new_w}×{new_h})"))
+                desired = target / relative
+                destination_folder = desired.parent
+                self.events.put(("status", f"Textur {index}/{len(prepared)}: {src.name} ({old_w}×{old_h} → {new_w}×{new_h})"))
                 try:
                     if src.suffix.lower() == ".ktx2":
                         if ktx is None:
@@ -928,45 +1020,72 @@ class ConverterApp:
                         if texconv is None:
                             raise RuntimeError("texconv.exe fehlt.")
                         texconv_format, generated_ext = TEXCONV_FORMAT[src.suffix.lower()]
-                        generated = destination_folder / f"{src.stem}{generated_ext}"
-                        command = [
-                            str(texconv), "-nologo", "-y", "-if", "FANT",
-                            "-w", str(new_w), "-h", str(new_h),
-                            "-ft", texconv_format, "-o", str(destination_folder),
-                        ]
-                        if src.suffix.lower() == ".dds":
-                            command.extend(["-m", "0"])
-                        command.append(str(src))
-                        result = subprocess.run(
-                            command,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            text=True,
-                            encoding="utf-8",
-                            errors="replace",
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                            check=False,
-                        )
-                        if result.returncode != 0 or not generated.exists():
-                            details = (result.stdout or "").strip().replace("\r", " ")
-                            if len(details) > 700:
-                                details = details[-700:]
-                            raise RuntimeError(details or f"texconv beendete sich mit Code {result.returncode}")
-                        if generated != desired:
-                            if desired.exists():
-                                desired.unlink()
-                            generated.replace(desired)
+                        with tempfile.TemporaryDirectory(prefix="msfs_4k_") as temp_name:
+                            temp_dir = Path(temp_name)
+                            command = [
+                                str(texconv), "-nologo", "-y", "-if", "FANT",
+                                "-w", str(new_w), "-h", str(new_h),
+                                "-ft", texconv_format, "-o", str(temp_dir),
+                            ]
+                            if src.suffix.lower() == ".dds":
+                                command.extend(["-m", "0"])
+                            command.append(str(src))
+                            result = subprocess.run(
+                                command,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                encoding="utf-8",
+                                errors="replace",
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                check=False,
+                            )
+                            generated = temp_dir / f"{src.stem}{generated_ext}"
+                            if result.returncode != 0 or not generated.exists():
+                                details = (result.stdout or "").strip().replace("\r", " ")
+                                if len(details) > 700:
+                                    details = details[-700:]
+                                raise RuntimeError(details or f"texconv beendete sich mit Code {result.returncode}")
+                            shutil.copy2(generated, desired)
 
                     converted += 1
                     self.events.put(("log", f"OK: {relative}  {old_w}×{old_h} → {new_w}×{new_h}"))
                 except Exception as exc:
                     failed += 1
-                    self.events.put(("log", f"FEHLER: {relative} – {exc}"))
+                    self.events.put(("log", f"FEHLER: {relative} – {exc} (Originaltextur bleibt im Zielordner erhalten)"))
+                self.events.put(("progress", len(files) + index, total_work))
 
-                self.events.put(("progress", index, total))
+            # Rebuild the package index after all file sizes/timestamps are final.
+            target_layout = target / "layout.json"
+            source_layout = source / "layout.json"
+            if source_layout.is_file() and target_layout.is_file():
+                if layout_generator is not None:
+                    self.events.put(("status", "Aktualisiere layout.json …"))
+                    try:
+                        run_tool([str(layout_generator), str(target_layout)], "MSFSLayoutGenerator")
+                        layout_result = "aktualisiert"
+                        self.events.put(("log", "OK: layout.json wurde mit MSFSLayoutGenerator.exe aktualisiert."))
+                    except Exception as exc:
+                        layout_result = "FEHLER"
+                        self.events.put(("log", f"FEHLER beim Aktualisieren von layout.json: {exc}"))
+                else:
+                    layout_result = "manuell zu aktualisieren"
+                    self.events.put((
+                        "log",
+                        "HINWEIS: layout.json wurde mitkopiert, aber nicht aktualisiert. "
+                        "Vor der Verwendung im Simulator MSFSLayoutGenerator.exe auf die ZIEL-layout.json ziehen "
+                        "oder das Layout über das MSFS-SDK neu erzeugen.",
+                    ))
+            elif source_layout.exists():
+                layout_result = "nicht kopiert"
+                self.events.put(("log", "WARNUNG: layout.json aus der Quelle konnte nicht im Zielordner gefunden werden."))
+            else:
+                layout_result = "keine layout.json in der Quelle"
+                self.events.put(("log", "HINWEIS: Im Quellordner liegt keine layout.json im Stammverzeichnis. Falls dies ein vollständiges MSFS-Paket sein soll, Paketwurzel als Quelle wählen."))
 
+            self.events.put(("progress", 1, 1))
             result_text = "Abgebrochen." if self.cancel_event.is_set() else "Fertig."
-            self.events.put(("finished", result_text, converted, failed, unreadable, unsupported))
+            self.events.put(("finished", result_text, copied, copy_failed, converted, failed, unreadable, unsupported, layout_result))
         except Exception as exc:
             self.events.put(("fatal", str(exc)))
 
@@ -983,12 +1102,14 @@ class ConverterApp:
                     _, current, total = event
                     self.progress_var.set(current * 100 / max(total, 1))
                 elif kind == "finished":
-                    _, result_text, converted, failed, unreadable, unsupported = event
+                    _, result_text, copied, copy_failed, converted, failed, unreadable, unsupported, layout_result = event
                     self.status_var.set(
-                        f"{result_text} Erfolgreich: {converted} | Fehler: {failed} | "
+                        f"{result_text} Kopiert: {copied} (Fehler: {copy_failed}) | "
+                        f"Verkleinert: {converted} (Fehler: {failed}) | "
                         f"Nicht lesbar: {unreadable} | Nicht unterstützt: {unsupported}"
                     )
                     self._append_log(self.status_var.get())
+                    self._append_log(f"layout.json: {layout_result}")
                     self.start_button.configure(state="normal")
                     self.cancel_button.configure(state="disabled")
                 elif kind == "fatal":
