@@ -1,8 +1,18 @@
-MSFS 2024 – Livery 4K Converter 1.4 (Full Package)
+MSFS 2024 – Livery 4K Converter 1.5 (Full Package)
 ==================================================
 
-WAS NEU IN VERSION 1.4
+SPRACHAUSWAHL (NEU IN VERSION 1.5)
+---------------------------------
+- Oben rechts im Programmfenster kann zwischen „Deutsch“ und „English“ gewechselt werden.
+- Die Auswahl gilt für Fenstertexte, Einstellungen, Dialoge, Statusmeldungen und neue Protokolleinträge.
+- Die zuletzt gewählte Sprache wird automatisch für den nächsten Programmstart gespeichert.
+- Bereits vorhandene Protokolleinträge behalten ihre ursprüngliche Sprache.
+
+WAS NEU IN VERSION 1.5
 ----------------------
+- Die Programmoberfläche ist vollständig zweisprachig (Deutsch/Englisch).
+- Die Sprachauswahl befindet sich oben rechts und wird beim nächsten Start beibehalten.
+- Alle Funktionen aus Version 1.4 bleiben enthalten.
 - Der Zielordner wird jetzt als vollständige Kopie des Quellordners aufgebaut.
 - ALLE Dateien werden übernommen: manifest.json, layout.json, CFG/JSON/XML, Thumbnails,
   Dokumente, sonstige Dateien und alle Texturen.

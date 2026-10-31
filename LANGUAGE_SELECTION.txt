@@ -1,0 +1,10 @@
+MSFS 2024 – Livery 4K Converter 1.5
+Language selection / Sprachauswahl
+
+Deutsch:
+Oben rechts im Programmfenster kann zwischen Deutsch und English gewechselt werden.
+Die zuletzt gewählte Sprache wird für den nächsten Start gespeichert.
+
+English:
+Use the selector at the top right of the application window to switch between German and English.
+The selected language is saved and restored the next time the application starts.
