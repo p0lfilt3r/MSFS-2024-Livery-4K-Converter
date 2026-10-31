@@ -1,0 +1,30 @@
+Version 1.4 – Full Package + BC7-KTX2 + GPU Acceleration
+=======================================================
+
+The converter now FIRST copies all files from the source folder, including all
+subfolders, to the destination folder. It then replaces only textures whose width
+or height exceeds the selected target size. If a conversion fails, the copied
+original file is left unchanged.
+
+BC7-KTX2 data is extracted directly from the KTX2 container as raw data, passed to
+DirectXTex as DDS/BC7, and packaged back into KTX2 after resizing. The KTX2 DFD
+and the complete Key/Value metadata block, including ASOBO_* entries, are preserved.
+
+For BC7, texconv can use the GPU through DirectCompute:
+  -gpu 0     DirectCompute adapter 0 (default)
+  -gpu 1     DirectCompute adapter 1 (often the NVIDIA GPU on hybrid laptops)
+  -nogpu     CPU mode
+
+MSFSLayoutGenerator.exe can be selected in the application as the "Layout Tool".
+If a layout.json file is present in the source root folder, the program runs the
+generator after conversion and points it to the layout.json file in the destination
+folder. Without a Layout Tool, the package file list must be updated manually before
+the package is used in the simulator.
+
+Required external tools:
+- Microsoft DirectXTex texconv.exe
+- Khronos KTX-Software ktx.exe (for KTX2)
+- MSFSLayoutGenerator.exe (recommended for complete packages containing layout.json)
+- Python 3.9+ and Pillow
+
+Original source files are never modified.
