@@ -1,0 +1,22 @@
+Version 1.3 – BC7-KTX2 + GPU-Beschleunigung
+==========================================
+
+BC7-KTX2 wird roh aus dem KTX2-Container entnommen, als DDS/BC7 an DirectXTex
+übergeben und nach dem Verkleinern wieder als KTX2 verpackt. KTX2-DFD und die
+kompletten Key/Value-Metadaten (einschließlich ASOBO_*) werden übernommen.
+
+Für BC7 kann texconv per DirectCompute eine GPU verwenden:
+  -gpu 0     DirectCompute-Adapter 0 (Standard)
+  -gpu 1     DirectCompute-Adapter 1 (häufig NVIDIA auf Hybrid-Notebooks)
+  -nogpu     CPU-Modus
+
+Die Auswahl erfolgt in der Programmoberfläche. Die Adapter-ID ist die DirectX-
+Adapternummer und muss nicht der CUDA-Gerätenummer entsprechen.
+
+Benötigte externe Werkzeuge:
+- Microsoft DirectXTex texconv.exe
+- Khronos KTX-Software ktx.exe
+- Python 3.9+ und Pillow
+
+Die Originaldateien werden nicht verändert. Ein echter Windows-Test mit den
+12 Original-KTX2-Dateien und der NVIDIA-Grafikkarte des Anwenders steht noch aus.

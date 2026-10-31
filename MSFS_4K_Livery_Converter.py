@@ -26,7 +26,7 @@ try:
 except ImportError:
     Image = None  # DDS header reading still works without Pillow.
 
-APP_TITLE = "MSFS 2024 – Livery 4K Converter"
+APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.3 (NVIDIA-BC7)"
 SUPPORTED_EXTENSIONS = {
     ".dds", ".png", ".tga", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".ktx2"
 }
@@ -171,7 +171,248 @@ def ktx2_format_name(vk_format: object) -> str:
         raise RuntimeError(f"Unbekanntes Vulkan-Texturformat (vkFormat={vk_format})")
 
 
-def convert_ktx2(ktx: Path, source: Path, destination: Path, width: int, height: int) -> None:
+def bc7_level_size(width: int, height: int) -> int:
+    """Byte size of one BC7 image level (16 bytes per 4x4 block)."""
+    return max(1, (width + 3) // 4) * max(1, (height + 3) // 4) * 16
+
+
+def make_bc7_dds(width: int, height: int, pixel_data: bytes, dxgi_format: int) -> bytes:
+    """Wrap a single BC7 mip level in a DirectX 10 DDS container."""
+    expected = bc7_level_size(width, height)
+    if len(pixel_data) != expected:
+        raise RuntimeError(
+            f"BC7-Rohdaten haben {len(pixel_data)} Bytes; erwartet wurden {expected} Bytes."
+        )
+    # DDS_HEADER flags: CAPS | HEIGHT | WIDTH | PIXELFORMAT | LINEARSIZE.
+    flags = 0x1 | 0x2 | 0x4 | 0x1000 | 0x80000
+    caps = 0x1000  # DDSCAPS_TEXTURE
+    # DDS_PIXELFORMAT: FOURCC = 'DX10'.
+    pixel_format = struct.pack("<8I", 32, 0x4, int.from_bytes(b"DX10", "little"), 0, 0, 0, 0, 0)
+    reserved = (0,) * 11
+    dds_header = struct.pack(
+        "<7I11I",
+        124, flags, height, width, expected, 0, 1,
+        *reserved,
+    ) + pixel_format + struct.pack("<5I", caps, 0, 0, 0, 0)
+    dx10_header = struct.pack("<5I", dxgi_format, 3, 0, 1, 0)  # TEXTURE2D, one array slice.
+    return b"DDS " + dds_header + dx10_header + pixel_data
+
+
+def read_bc7_dds_mips(path: Path, expected_dxgi: int) -> tuple[int, int, list[bytes]]:
+    """Read BC7 mip payloads from the DirectXTex DDS output."""
+    data = path.read_bytes()
+    if len(data) < 148 or data[:4] != b"DDS ":
+        raise RuntimeError("texconv hat keine gültige DDS-Datei erzeugt.")
+    if struct.unpack_from("<I", data, 4)[0] != 124:
+        raise RuntimeError("texconv hat einen unbekannten DDS-Header erzeugt.")
+    height = struct.unpack_from("<I", data, 12)[0]
+    width = struct.unpack_from("<I", data, 16)[0]
+    mip_count = max(1, struct.unpack_from("<I", data, 28)[0])
+    fourcc = data[84:88]
+    if fourcc != b"DX10":
+        raise RuntimeError("texconv hat kein DirectX-10-DDS-Format mit BC7-Header erzeugt.")
+    dxgi_format = struct.unpack_from("<I", data, 128)[0]
+    if dxgi_format != expected_dxgi:
+        raise RuntimeError(
+            f"Unerwartetes DDS-Pixel-Format {dxgi_format}; BC7-Format {expected_dxgi} wurde erwartet."
+        )
+    if width <= 0 or height <= 0:
+        raise RuntimeError("DDS-Ausgabe enthält ungültige Abmessungen.")
+    pos = 148
+    mips: list[bytes] = []
+    for level in range(mip_count):
+        level_w = max(1, width >> level)
+        level_h = max(1, height >> level)
+        size = bc7_level_size(level_w, level_h)
+        if pos + size > len(data):
+            raise RuntimeError(f"DDS-Ausgabe ist bei Mipmap {level} unvollständig.")
+        mips.append(data[pos:pos + size])
+        pos += size
+    return width, height, mips
+
+
+def wrap_bc7_mips_as_ktx2(
+    source: Path,
+    destination: Path,
+    width: int,
+    height: int,
+    mip_levels: list[bytes],
+) -> None:
+    """Create a BC7 KTX2 file and preserve its DFD and all key/value metadata."""
+    with source.open("rb") as stream:
+        fixed = stream.read(80)
+        if len(fixed) != 80 or fixed[:12] != KTX2_IDENTIFIER:
+            raise RuntimeError("Ungültiger KTX2-Header beim Neuerstellen der Datei.")
+        fields = struct.unpack_from("<9I", fixed, 12)
+        vk_format, _type_size, _old_width, _old_height, depth, layers, faces, _levels, _scheme = fields
+        dfd_offset, dfd_length, kvd_offset, kvd_length = struct.unpack_from("<4I", fixed, 48)
+        if vk_format not in (145, 146):
+            raise RuntimeError(f"Kein BC7-KTX2-Format (vkFormat={vk_format}).")
+        if depth != 0 or layers != 0 or faces != 1:
+            raise RuntimeError("Nur normale 2D-KTX2-Texturen werden für BC7 unterstützt.")
+        if not dfd_offset or not dfd_length:
+            raise RuntimeError("KTX2-Datei enthält keinen gültigen Data Format Descriptor.")
+        stream.seek(dfd_offset)
+        dfd = stream.read(dfd_length)
+        if len(dfd) != dfd_length:
+            raise RuntimeError("KTX2-Data-Format-Descriptor ist unvollständig.")
+        kvd = b""
+        if kvd_length:
+            if not kvd_offset:
+                raise RuntimeError("KTX2-Metadatenoffset ist ungültig.")
+            stream.seek(kvd_offset)
+            kvd = stream.read(kvd_length)
+            if len(kvd) != kvd_length:
+                raise RuntimeError("KTX2-Key/Value-Metadaten sind unvollständig.")
+
+    level_count = len(mip_levels)
+    if level_count < 1:
+        raise RuntimeError("Keine BC7-Mipmap-Daten zum Schreiben vorhanden.")
+    for level, payload in enumerate(mip_levels):
+        lw, lh = max(1, width >> level), max(1, height >> level)
+        expected = bc7_level_size(lw, lh)
+        if len(payload) != expected:
+            raise RuntimeError(
+                f"BC7-Mipmap {level} enthält {len(payload)} Bytes; erwartet wurden {expected} Bytes."
+            )
+
+    # KTX2 has an 80-byte header followed by levelCount 24-byte level-index entries.
+    output = bytearray(80 + level_count * 24)
+    while len(output) % 4:
+        output.append(0)
+    dfd_new_offset = len(output)
+    output.extend(dfd)
+    while len(output) % 4:
+        output.append(0)
+    kvd_new_offset = len(output) if kvd else 0
+    if kvd:
+        output.extend(kvd)
+    # BC7 blocks are 16-byte texel blocks. KTX2 requires each uncompressed level
+    # to start on an lcm(16, 4) = 16-byte boundary.
+    while len(output) % 16:
+        output.append(0)
+
+    level_index: list[tuple[int, int, int] | None] = [None] * level_count
+    # Physical image data is stored smallest mip first, but the level index is
+    # always ordered from the largest mip (level 0) to the smallest.
+    for level in range(level_count - 1, -1, -1):
+        while len(output) % 16:
+            output.append(0)
+        payload = mip_levels[level]
+        level_index[level] = (len(output), len(payload), len(payload))
+        output.extend(payload)
+
+    # KTX2 header: no supercompression; preserve source BC7 format and metadata.
+    header = struct.pack(
+        "<12s9I4I2Q",
+        KTX2_IDENTIFIER,
+        vk_format, 1, width, height, 0, 0, 1, level_count, 0,
+        dfd_new_offset, len(dfd), kvd_new_offset, len(kvd), 0, 0,
+    )
+    output[:80] = header
+    pos = 80
+    for entry in level_index:
+        assert entry is not None
+        struct.pack_into("<3Q", output, pos, *entry)
+        pos += 24
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(output)
+
+
+def convert_bc7_ktx2_via_texconv(
+    ktx: Path,
+    texconv: Path,
+    source: Path,
+    destination: Path,
+    width: int,
+    height: int,
+    gpu_adapter: Optional[int],
+) -> None:
+    """Resize native BC7 KTX2 using DirectXTex without decoding via ktx extract PNG."""
+    header = read_ktx2_header(source)
+    if header.vk_format not in (145, 146):
+        raise RuntimeError("Interner Aufruf für Nicht-BC7-KTX2.")
+    if header.supercompression not in (0, 2, 3):
+        raise RuntimeError(
+            f"BC7-KTX2-Superkomprimierung {header.supercompression} kann nicht sicher verarbeitet werden."
+        )
+    if header.depth != 0 or header.layers != 0 or header.faces != 1:
+        raise RuntimeError("BC7-KTX2: Nur normale 2D-Texturen ohne Array oder Cubemap werden unterstützt.")
+
+    dxgi_format = 98 if header.vk_format == 145 else 99  # BC7_UNORM / BC7_UNORM_SRGB.
+    format_name = "BC7_UNORM" if header.vk_format == 145 else "BC7_UNORM_SRGB"
+    with tempfile.TemporaryDirectory(prefix="msfs_bc7_ktx2_") as temp_name:
+        temp = Path(temp_name)
+        raw_path = temp / "source.raw"
+
+        if header.supercompression == 0:
+            # For uncompressed KTX2, read the base-level BC7 blocks directly.
+            with source.open("rb") as stream:
+                fixed = stream.read(80)
+                level_count = max(1, struct.unpack_from("<I", fixed, 12 + 7 * 4)[0])
+                stream.seek(80)
+                entries = [struct.unpack("<3Q", stream.read(24)) for _ in range(level_count)]
+                offset, length, _uncompressed_length = entries[0]
+                stream.seek(offset)
+                raw_data = stream.read(length)
+            expected = bc7_level_size(header.width, header.height)
+            if len(raw_data) != expected:
+                raise RuntimeError(
+                    f"KTX2-BC7-Level 0 enthält {len(raw_data)} Bytes; erwartet wurden {expected} Bytes."
+                )
+            raw_path.write_bytes(raw_data)
+        else:
+            # KTX's --raw mode inflates the level but does not try to decode BC7 pixels.
+            run_tool(
+                [str(ktx), "extract", "--raw", "--level", "0", str(source), str(raw_path)],
+                "ktx extract --raw",
+            )
+            if not raw_path.is_file():
+                raise RuntimeError("ktx extract --raw hat keine BC7-Rohdaten erzeugt.")
+            expected = bc7_level_size(header.width, header.height)
+            if raw_path.stat().st_size != expected:
+                raise RuntimeError(
+                    f"KTX2-BC7-Rohdaten haben {raw_path.stat().st_size} Bytes; erwartet wurden {expected} Bytes."
+                )
+
+        input_dds = temp / "source_bc7.dds"
+        input_dds.write_bytes(make_bc7_dds(header.width, header.height, raw_path.read_bytes(), dxgi_format))
+        out_dir = temp / "out"
+        out_dir.mkdir()
+        command = [
+            str(texconv), "-nologo", "-y", "-if", "FANT",
+            "-w", str(width), "-h", str(height), "-m", "0",
+            "-f", format_name, "-dx10", "-ft", "dds", "-o", str(out_dir),
+        ]
+        # DirectXTex can encode BC7 through DirectCompute on the selected adapter.
+        # -gpu 0 is the default adapter; on hybrid laptops the NVIDIA card may be 1.
+        if gpu_adapter is None:
+            command.append("-nogpu")
+        else:
+            command.extend(["-gpu", str(gpu_adapter)])
+        command.append(str(input_dds))
+        run_tool(command, "texconv (BC7)")
+        resized_dds = out_dir / input_dds.name
+        if not resized_dds.is_file():
+            raise RuntimeError("texconv hat keine verkleinerte BC7-DDS-Datei erzeugt.")
+        out_width, out_height, mip_levels = read_bc7_dds_mips(resized_dds, dxgi_format)
+        if (out_width, out_height) != (width, height):
+            raise RuntimeError(
+                f"texconv-Ausgabe hat {out_width}×{out_height}; erwartet wurden {width}×{height}."
+            )
+        wrap_bc7_mips_as_ktx2(source, destination, out_width, out_height, mip_levels)
+
+
+def convert_ktx2(
+    ktx: Path,
+    texconv: Path,
+    source: Path,
+    destination: Path,
+    width: int,
+    height: int,
+    gpu_adapter: Optional[int],
+) -> None:
     """Resize a standard 2D KTX2 file and regenerate its mip chain."""
     header = read_ktx2_header(source)
     if header.supercompression == 65536:
@@ -184,6 +425,9 @@ def convert_ktx2(ktx: Path, source: Path, destination: Path, width: int, height:
             f"Nicht unterstützte KTX2-Superkomprimierung {header.supercompression}. "
             "Die Datei wurde unverändert übersprungen."
         )
+    if header.vk_format in (145, 146):
+        convert_bc7_ktx2_via_texconv(ktx, texconv, source, destination, width, height, gpu_adapter)
+        return
     if header.depth != 0 or header.layers != 0 or header.faces != 1:
         raise RuntimeError("Nur normale 2D-KTX2-Texturen ohne Array, Cubemap oder 3D-Daten werden unterstützt.")
 
@@ -322,8 +566,8 @@ class ConverterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title(APP_TITLE)
-        self.root.geometry("940x760")
-        self.root.minsize(800, 650)
+        self.root.geometry("960x810")
+        self.root.minsize(820, 700)
 
         self.events: queue.Queue[tuple] = queue.Queue()
         self.worker: Optional[threading.Thread] = None
@@ -334,6 +578,8 @@ class ConverterApp:
         self.texconv_var = tk.StringVar(value=find_texconv())
         self.ktx_var = tk.StringVar(value=find_ktx())
         self.max_size_var = tk.StringVar(value="4096")
+        self.use_gpu_var = tk.BooleanVar(value=True)
+        self.gpu_index_var = tk.StringVar(value="0")
         self.status_var = tk.StringVar(value="Bereit")
         self.progress_var = tk.DoubleVar(value=0)
 
@@ -387,6 +633,25 @@ class ConverterApp:
             style="Info.TLabel",
             wraplength=820,
         ).pack(anchor="w", pady=(8, 0))
+        gpu_row = ttk.Frame(settings)
+        gpu_row.pack(fill="x", pady=(8, 0))
+        ttk.Checkbutton(
+            gpu_row,
+            text="GPU-Beschleunigung für BC7 verwenden (DirectCompute)",
+            variable=self.use_gpu_var,
+        ).pack(side="left")
+        ttk.Label(gpu_row, text="Adapter-Index:").pack(side="left", padx=(16, 4))
+        ttk.Entry(gpu_row, textvariable=self.gpu_index_var, width=5).pack(side="left")
+        ttk.Label(
+            settings,
+            text=(
+                "NVIDIA-GPU: Index 0 ist der Windows-Standardadapter. Bei Notebooks mit integrierter "
+                "Grafik kann die NVIDIA-Karte Index 1 sein. Falls GPU-Verarbeitung fehlschlägt, "
+                "Häkchen entfernen und erneut starten (CPU-Modus)."
+            ),
+            style="Info.TLabel",
+            wraplength=820,
+        ).pack(anchor="w", pady=(4, 0))
 
         note = ttk.Frame(outer)
         note.pack(fill="x", pady=(10, 0))
@@ -399,15 +664,17 @@ class ConverterApp:
         ttk.Label(
             note,
             text=(
-                "KTX2: Standarddateien werden mit der Khronos KTX-Software neu aufgebaut. "
-                "Proprietäre MSFS-Komprimierungen (z. B. 65536) werden erkannt und übersprungen."
+                "KTX2: BC7 wird über DirectXTex verkleinert und als KTX2 mit erhaltenen ASOBO-Metadaten neu verpackt. "
+                "Die BC7-Neukomprimierung kann per DirectCompute auf der NVIDIA-GPU laufen. Andere Standardformate "
+                "werden über die Khronos KTX-Software verarbeitet. Proprietäre Varianten "
+                "(z. B. Kennwert 65536) werden übersprungen."
             ),
             style="Info.TLabel",
             wraplength=820,
         ).pack(anchor="w", pady=(3, 0))
         ttk.Label(
             note,
-            text="Unterstützte Formate: DDS, PNG, TGA, JPG/JPEG, BMP, TIFF und standardkonformes KTX2.",
+            text="Unterstützte Formate: DDS, PNG, TGA, JPG/JPEG, BMP, TIFF sowie KTX2 (einschließlich BC7).",
             style="Info.TLabel",
         ).pack(anchor="w", pady=(3, 0))
 
@@ -515,13 +782,13 @@ class ConverterApp:
             return
 
         needs_ktx = ".ktx2" in present_extensions
-        needs_texconv = any(ext != ".ktx2" for ext in present_extensions)
+        needs_texconv = bool(present_extensions)
         texconv_path = Path(texconv_text) if texconv_text and Path(texconv_text).is_file() else None
         ktx_path = Path(ktx_text) if ktx_text and Path(ktx_text).is_file() else None
         if needs_texconv and texconv_path is None:
             messagebox.showerror(
                 "texconv.exe fehlt",
-                "Für DDS und normale Bilddateien wird Microsoft DirectXTex texconv benötigt.\n\n"
+                "Für DDS, normale Bilddateien und BC7-KTX2 wird Microsoft DirectXTex texconv benötigt.\n\n"
                 "Installation über PowerShell/Eingabeaufforderung:\n"
                 "winget install Microsoft.DirectXTex.Texconv\n\n"
                 "Danach texconv.exe hier auswählen.",
@@ -544,6 +811,19 @@ class ConverterApp:
             messagebox.showerror("Ungültige Größe", "Die maximale Kantenlänge muss eine Zahl zwischen 256 und 32768 sein.")
             return
 
+        gpu_adapter: Optional[int] = None
+        if self.use_gpu_var.get():
+            try:
+                gpu_adapter = int(self.gpu_index_var.get().strip())
+                if not 0 <= gpu_adapter <= 16:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror(
+                    "Ungültiger GPU-Index",
+                    "Der DirectCompute-Adapterindex muss eine ganze Zahl zwischen 0 und 16 sein.",
+                )
+                return
+
         self.cancel_event.clear()
         self.progress_var.set(0)
         self.status_var.set("Suche Texturen …")
@@ -552,9 +832,13 @@ class ConverterApp:
         self._append_log("\n" + "=" * 72)
         self._append_log(f"Start: {source}")
         self._append_log(f"Ziel:  {target}")
+        self._append_log(
+            f"BC7-Beschleunigung: DirectCompute-Adapter {gpu_adapter}" if gpu_adapter is not None
+            else "BC7-Beschleunigung: CPU (GPU deaktiviert)"
+        )
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(source, target, texconv_path, ktx_path, max_size),
+            args=(source, target, texconv_path, ktx_path, max_size, gpu_adapter),
             daemon=True,
         )
         self.worker.start()
@@ -571,6 +855,7 @@ class ConverterApp:
         texconv: Optional[Path],
         ktx: Optional[Path],
         max_size: int,
+        gpu_adapter: Optional[int],
     ) -> None:
         try:
             files: list[Path] = []
@@ -636,7 +921,9 @@ class ConverterApp:
                     if src.suffix.lower() == ".ktx2":
                         if ktx is None:
                             raise RuntimeError("ktx.exe fehlt.")
-                        convert_ktx2(ktx, src, desired, new_w, new_h)
+                        if texconv is None:
+                            raise RuntimeError("texconv.exe fehlt (für BC7-KTX2 und DDS-Verarbeitung erforderlich).")
+                        convert_ktx2(ktx, texconv, src, desired, new_w, new_h, gpu_adapter)
                     else:
                         if texconv is None:
                             raise RuntimeError("texconv.exe fehlt.")
