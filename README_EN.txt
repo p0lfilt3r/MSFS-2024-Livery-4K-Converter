@@ -1,4 +1,4 @@
-MSFS 2024 – Livery 4K Converter 1.5 (Full Package)
+MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)
 =================================================
 
 LANGUAGE SELECTION (NEW IN VERSION 1.5)
@@ -8,9 +8,10 @@ LANGUAGE SELECTION (NEW IN VERSION 1.5)
 - The selected language is saved automatically and restored on the next launch.
 - Existing log entries remain in the language in which they were originally written.
 
-WHAT'S NEW IN VERSION 1.5
+WHAT'S NEW IN VERSION 1.6
 -------------------------
 - The application interface is bilingual (German/English).
+- After at least one KTX2 texture is successfully modified, all copied .ktx2p files are removed from the DESTINATION package. Source files remain untouched.
 - The language selector is at the top right and the selected language is remembered.
 - All features from version 1.4 are retained.
 - The destination folder is now created as a complete copy of the source folder.
@@ -97,6 +98,8 @@ IMPORTANT: THE DESTINATION FOLDER
   are overwritten. Extra old files that are no longer present in the source are NOT
   deleted automatically, as a safety measure.
 - The source folder is always left unchanged.
+- Destination-only exception: after a successful KTX2 edit, .ktx2p files are removed
+  because they may contain stale packed texture data. They remain in the source folder.
 
 MSFS LAYOUT.JSON – DO I NEED MSFSLayoutGenerator.exe?
 ----------------------------------------------------
@@ -145,8 +148,20 @@ conversion. Such files may need to be extracted using the MSFS Livery Toolkit an
 rebuilt with the MSFS SDK:
 https://github.com/theflaknine/MSFS-Livery-Toolkit/releases/latest
 
-KTX2P files are packed streaming files, not individual textures. They are copied
-unchanged but are not processed as image textures.
+IMPORTANT – KTX2P AND VRAM REDUCTION
+-------------------------------------
+MSFS 2024 may continue using old packed texture data from .ktx2p files even after
+individual .ktx2 files have been resized. Microsoft documents this behavior in the SDK
+and recommends removing KTX2P files after directly modifying KTX2 textures.
+
+Therefore, after at least one KTX2 texture has been resized successfully, version 1.6
+automatically removes all .ktx2p files from the DESTINATION folder. Original files in
+the SOURCE folder are never deleted. MSFS then falls back to the individual KTX2 files.
+If MSFSLayoutGenerator.exe is configured, layout.json is rebuilt afterwards so the
+removed KTX2P files are also removed from the package file list.
+
+If no KTX2 texture was successfully modified, KTX2P files are not removed. Use a fresh,
+empty destination folder for each conversion whenever possible.
 
 MSFS NOTES
 ----------

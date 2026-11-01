@@ -26,7 +26,7 @@ try:
 except ImportError:
     Image = None  # DDS header reading still works without Pillow.
 
-APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.5 (Full Package)"
+APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)"
 
 APP_LANGUAGE = "de"
 
@@ -633,6 +633,41 @@ def get_image_dimensions(path: Path) -> tuple[int, int]:
         return image.size
 
 
+def sum_ktx2_file_bytes(package_root: Path) -> int:
+    """Return the total on-disk size of regular .ktx2 files in a package."""
+    total = 0
+    for item in package_root.rglob("*"):
+        if item.is_file() and item.suffix.lower() == ".ktx2":
+            try:
+                total += item.stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def remove_stale_ktx2p_files(package_root: Path) -> tuple[list[Path], list[tuple[Path, str]], int]:
+    """Remove copied KTX2P streaming packs after KTX2 payloads were edited.
+
+    MSFS 2024 can prefer stale data in KTX2P over directly modified KTX2 files.
+    Removing the packs from the OUTPUT package makes the simulator fall back to
+    the standard individual KTX2 files. The source package is never touched.
+    """
+    removed: list[Path] = []
+    errors: list[tuple[Path, str]] = []
+    total_bytes = 0
+    for item in package_root.rglob("*"):
+        if not item.is_file() or item.suffix.lower() != ".ktx2p":
+            continue
+        try:
+            size = item.stat().st_size
+            item.unlink()
+            removed.append(item)
+            total_bytes += size
+        except OSError as exc:
+            errors.append((item, str(exc)))
+    return removed, errors, total_bytes
+
+
 class ConverterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -734,7 +769,7 @@ class ConverterApp:
 
         top = ttk.Frame(outer)
         top.pack(fill="x")
-        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.5", style="Title.TLabel").pack(side="left", anchor="w")
+        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.6", style="Title.TLabel").pack(side="left", anchor="w")
         language_box = ttk.Frame(top)
         language_box.pack(side="right", padx=(10, 0))
         ttk.Label(language_box, text=self.t("Sprache:", "Language:")).pack(side="left", padx=(0, 6))
@@ -834,11 +869,13 @@ class ConverterApp:
             note,
             text=self.t(
                 "KTX2: BC7 wird über DirectXTex verkleinert und als KTX2 mit erhaltenen ASOBO-Metadaten neu verpackt. "
-                "Die BC7-Neukomprimierung kann per DirectCompute auf der NVIDIA-GPU laufen. Andere Standardformate "
-                "werden über die Khronos KTX-Software verarbeitet. Proprietäre Varianten (z. B. Kennwert 65536) werden übersprungen.",
+                "Die BC7-Neukomprimierung kann per DirectCompute auf der NVIDIA-GPU laufen. Nach erfolgreicher KTX2-Änderung "
+                "werden .ktx2p-Dateien im Zielpaket entfernt, damit MSFS keine alten gepackten Texturen lädt. "
+                "Proprietäre Varianten (z. B. Kennwert 65536) werden übersprungen.",
                 "KTX2: BC7 textures are resized with DirectXTex and repacked as KTX2 while preserving ASOBO metadata. "
-                "BC7 recompression can use the NVIDIA GPU through DirectCompute. Other standard formats are "
-                "processed with Khronos KTX-Software. Proprietary variants (e.g. value 65536) are skipped."
+                "BC7 recompression can use the NVIDIA GPU through DirectCompute. After a successful KTX2 edit, "
+                ".ktx2p files are removed from the destination package so MSFS cannot load stale packed textures. "
+                "Proprietary variants (e.g. value 65536) are skipped."
             ),
             style="Info.TLabel", wraplength=850,
         ).pack(anchor="w", pady=(3, 0))
@@ -1098,6 +1135,7 @@ class ConverterApp:
         copied = 0
         copy_failed = 0
         converted = 0
+        converted_ktx2 = 0
         failed = 0
         unreadable = 0
         unsupported = 0
@@ -1213,6 +1251,15 @@ class ConverterApp:
                                     details = details[-700:]
                                 raise RuntimeError(details or f"texconv {tx('beendete sich', 'exited')} {tx('mit', 'with')} code {result.returncode}")
                             shutil.copy2(generated, desired)
+                    if src.suffix.lower() == ".ktx2":
+                        # Verify the actual KTX2 header written to the destination.
+                        result_header = read_ktx2_header(desired)
+                        if (result_header.width, result_header.height) != (new_w, new_h):
+                            raise RuntimeError(
+                                f"KTX2-Ausgabe hat {result_header.width}×{result_header.height}; "
+                                f"erwartet wurden {new_w}×{new_h}."
+                            )
+                        converted_ktx2 += 1
                     converted += 1
                     self.events.put(("log", tx(
                         f"OK: {relative}  {old_w}×{old_h} → {new_w}×{new_h}",
@@ -1226,6 +1273,45 @@ class ConverterApp:
                         f"ERROR: {relative} – {detail} (original texture retained in destination folder)"
                     )))
                 self.events.put(("progress", len(files) + index, total_work))
+
+            # IMPORTANT for MSFS 2024: a .ktx2p package can contain old packed texture
+            # payloads. The simulator may prefer those over individually modified .ktx2
+            # files. When at least one KTX2 was successfully resized, remove all copied
+            # KTX2P files from the destination package; MSFS falls back to regular KTX2.
+            # Never touch the source package.
+            if converted_ktx2 > 0:
+                removed_ktx2p, ktx2p_errors, removed_ktx2p_bytes = remove_stale_ktx2p_files(target)
+                for packed_file in removed_ktx2p:
+                    self.events.put(("log", tx(
+                        f"KTX2P ENTFERNT: {packed_file.relative_to(target)} – veraltete gepackte Texturdaten entfernt.",
+                        f"KTX2P REMOVED: {packed_file.relative_to(target)} – stale packed texture data removed."
+                    )))
+                for packed_file, error in ktx2p_errors:
+                    self.events.put(("log", tx(
+                        f"WARNUNG: KTX2P-Datei konnte nicht entfernt werden: {packed_file.name} – {error}",
+                        f"WARNING: Could not remove KTX2P file: {packed_file.name} – {error}"
+                    )))
+                if removed_ktx2p:
+                    self.events.put(("log", tx(
+                        f"MSFS-KTX2P-Fix: {len(removed_ktx2p)} Datei(en), {removed_ktx2p_bytes / (1024 * 1024):.1f} MiB entfernt. MSFS verwendet nun die einzelnen KTX2-Dateien.",
+                        f"MSFS KTX2P fix: removed {len(removed_ktx2p)} file(s), {removed_ktx2p_bytes / (1024 * 1024):.1f} MiB. MSFS will now use the individual KTX2 files."
+                    )))
+                else:
+                    self.events.put(("log", tx(
+                        "MSFS-KTX2P-Prüfung: Keine .ktx2p-Dateien im Zielpaket gefunden.",
+                        "MSFS KTX2P check: no .ktx2p files found in the destination package."
+                    )))
+
+                # Microsoft notes that a KTX2 file's disk size is a useful approximation
+                # of its texture-memory footprint. Show package-level before/after totals.
+                source_texture_bytes = sum_ktx2_file_bytes(source)
+                target_texture_bytes = sum_ktx2_file_bytes(target)
+                saved_bytes = source_texture_bytes - target_texture_bytes
+                saved_pct = (saved_bytes / source_texture_bytes * 100.0) if source_texture_bytes else 0.0
+                self.events.put(("log", tx(
+                    f"KTX2-Texturgröße (Näherungswert): Quelle {source_texture_bytes / (1024 * 1024):.1f} MiB | Ziel {target_texture_bytes / (1024 * 1024):.1f} MiB | Differenz {saved_bytes / (1024 * 1024):+.1f} MiB ({saved_pct:+.1f} %).",
+                    f"KTX2 texture size (estimate): source {source_texture_bytes / (1024 * 1024):.1f} MiB | destination {target_texture_bytes / (1024 * 1024):.1f} MiB | difference {saved_bytes / (1024 * 1024):+.1f} MiB ({saved_pct:+.1f} %)."
+                )))
 
             target_layout = target / "layout.json"
             source_layout = source / "layout.json"

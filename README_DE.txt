@@ -1,4 +1,4 @@
-MSFS 2024 – Livery 4K Converter 1.5 (Full Package)
+MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)
 ==================================================
 
 SPRACHAUSWAHL (NEU IN VERSION 1.5)
@@ -8,9 +8,10 @@ SPRACHAUSWAHL (NEU IN VERSION 1.5)
 - Die zuletzt gewählte Sprache wird automatisch für den nächsten Programmstart gespeichert.
 - Bereits vorhandene Protokolleinträge behalten ihre ursprüngliche Sprache.
 
-WAS NEU IN VERSION 1.5
+WAS NEU IN VERSION 1.6
 ----------------------
 - Die Programmoberfläche ist vollständig zweisprachig (Deutsch/Englisch).
+- Nach erfolgreicher Änderung mindestens einer KTX2-Textur entfernt der Konverter alle kopierten .ktx2p-Dateien aus dem ZIELPAKET. Die Quelldateien bleiben erhalten.
 - Die Sprachauswahl befindet sich oben rechts und wird beim nächsten Start beibehalten.
 - Alle Funktionen aus Version 1.4 bleiben enthalten.
 - Der Zielordner wird jetzt als vollständige Kopie des Quellordners aufgebaut.
@@ -99,6 +100,8 @@ WICHTIG ZUM ZIELORDNER
   überschrieben. Zusätzliche Altdateien, die nicht mehr in der Quelle vorkommen, werden
   aus Sicherheitsgründen NICHT automatisch gelöscht.
 - Der Quellordner bleibt immer unverändert.
+- Ausnahme im ZIELORDNER: .ktx2p-Dateien werden nach erfolgreicher KTX2-Änderung entfernt,
+  weil sie sonst veraltete Texturdaten bereitstellen könnten. Sie bleiben in der Quelle erhalten.
 
 MSFS LAYOUT.JSON – BRAUCHE ICH MSFSLayoutGenerator.exe?
 -------------------------------------------------------
@@ -146,8 +149,21 @@ Konvertierung übersprungen. Für solche Dateien ist ggf. eine Extraktion über 
 Livery Toolkit und anschließendes Neu-Bauen des Pakets mit dem MSFS-SDK notwendig:
 https://github.com/theflaknine/MSFS-Livery-Toolkit/releases/latest
 
-KTX2P-Dateien sind gepackte Streaming-Dateien und keine einzelnen Texturen; sie werden
-unverändert mitkopiert, aber nicht als Bildtexturen verarbeitet.
+WICHTIG – KTX2P UND VRAM-REDUZIERUNG
+------------------------------------
+MSFS 2024 kann bei vorhandenen .ktx2p-Dateien weiterhin die darin gespeicherten alten
+Texturdaten verwenden, obwohl einzelne .ktx2-Dateien verkleinert wurden. Microsoft
+beschreibt dieses Verhalten in der SDK-Dokumentation und empfiehlt, KTX2P-Dateien nach
+direkten Änderungen an KTX2 aus dem Paket zu entfernen.
+
+Deshalb löscht Version 1.6 nach mindestens einer erfolgreich verkleinerten KTX2-Textur
+automatisch alle .ktx2p-Dateien im ZIELORDNER. Die Originale im QUELLORDNER werden
+niemals gelöscht. MSFS fällt anschließend auf die einzelnen KTX2-Dateien zurück.
+Die layout.json wird danach – sofern MSFSLayoutGenerator.exe ausgewählt ist – neu
+aufgebaut, damit auch die entfernten KTX2P-Dateien aus der Paketliste verschwinden.
+
+Wenn keine KTX2-Textur erfolgreich verändert wurde, werden die KTX2P-Dateien nicht
+entfernt. Verwende für jeden Lauf möglichst einen frischen, leeren Zielordner.
 
 MSFS-HINWEISE
 -------------

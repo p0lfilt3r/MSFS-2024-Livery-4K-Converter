@@ -1,24 +1,24 @@
-Version 1.4 – vollständiges Paket + BC7-KTX2 + GPU-Beschleunigung
-=================================================================
-
-Der Konverter kopiert jetzt ZUERST alle Dateien des Quellordners einschließlich
-Unterordnern in den Zielordner. Danach ersetzt er nur Texturen, deren Breite oder
-Höhe über der Zielgröße liegt. Fehlerhafte Konvertierungen lassen die kopierte
-Originaldatei unverändert stehen.
+Version 1.6 – BC7-KTX2, GPU-Beschleunigung und KTX2P-Fix
+========================================================
 
 BC7-KTX2 wird roh aus dem KTX2-Container entnommen, als DDS/BC7 an DirectXTex
 übergeben und nach dem Verkleinern wieder als KTX2 verpackt. KTX2-DFD und die
 kompletten Key/Value-Metadaten einschließlich ASOBO_* werden übernommen.
+
+VRAM-WICHTIG: MSFS 2024 kann alte, zusammengefasste Texturdaten aus .ktx2p-Dateien
+laden, auch wenn die einzelnen .ktx2-Dateien bereits verkleinert wurden. Microsoft
+empfiehlt, solche KTX2P-Dateien nach direkten Änderungen an KTX2 zu entfernen.
+Version 1.6 entfernt deshalb nach einer erfolgreichen KTX2-Verkleinerung alle
+.ktx2p-Dateien NUR im Zielpaket. Die Quelldateien bleiben unangetastet. Der Simulator
+fällt anschließend auf die normalen KTX2-Dateien zurück.
 
 Für BC7 kann texconv per DirectCompute die GPU verwenden:
   -gpu 0     DirectCompute-Adapter 0 (Standard)
   -gpu 1     DirectCompute-Adapter 1 (häufig NVIDIA auf Hybrid-Notebooks)
   -nogpu     CPU-Modus
 
-MSFSLayoutGenerator.exe kann in der Oberfläche als "Layout-Tool" ausgewählt werden.
-Wenn eine layout.json im Quell-Stammordner liegt, ruft das Programm den Generator
-nach dem Konvertieren mit der layout.json im Zielordner auf. Ohne Layout-Tool ist die
-Paketdateiliste vor der Verwendung im Simulator manuell zu aktualisieren.
+MSFSLayoutGenerator.exe wird nach dem Entfernen der KTX2P-Dateien und nach der
+Konvertierung ausgeführt, damit layout.json zur tatsächlichen Paketdateistruktur passt.
 
 Benötigte externe Werkzeuge:
 - Microsoft DirectXTex texconv.exe
@@ -26,4 +26,5 @@ Benötigte externe Werkzeuge:
 - MSFSLayoutGenerator.exe (empfohlen für vollständige Pakete mit layout.json)
 - Python 3.9+ und Pillow
 
-Originaldateien werden nicht verändert.
+Originaldateien werden nicht verändert. Die KTX2P-Bereinigung betrifft ausschließlich
+den Zielordner, nicht den Quellordner.
