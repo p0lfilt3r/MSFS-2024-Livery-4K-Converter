@@ -2,6 +2,8 @@
 
 **[English](README_EN.md) | [Deutsch](README_DE.md)**
 
+[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 A Windows desktop utility that creates a lower-resolution copy of Microsoft Flight Simulator 2024 aircraft-livery packages. It keeps the source package unchanged, copies the package structure, and resizes supported textures above a configured maximum dimension.
 
 > **Current supplied source snapshot:** v1.6 – KTX2P handling.  
@@ -63,4 +65,8 @@ The original ZIP snapshots are included in the GitHub setup bundle under `histor
 
 ## License
 
-No open-source license has been selected by the project owner. See [LICENSE_STATUS.md](LICENSE_STATUS.md). Until a license is selected and added, do not assume permission to reuse, modify, or redistribute the code.
+Copyright (C) 2026 p0lfilt3r.
+
+This project is licensed under the **GNU General Public License version 3.0 only (GPL-3.0-only)**. You may use, study, modify, and redistribute this software under the terms of that license. **Commercial use is permitted**; the GPL does not impose a non-commercial restriction. Distribution of the program or modified versions must comply with the GPL's applicable source-code, notice, and licensing requirements.
+
+See [LICENSE](LICENSE) for the full license text. This license applies to this project's code; external tools retain their own separate licenses and terms.
