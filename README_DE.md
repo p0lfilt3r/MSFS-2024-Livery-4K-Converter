@@ -2,6 +2,8 @@
 
 **[Deutsch](README_DE.md) | [English](README_EN.md)**
 
+[![Lizenz: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 Ein Windows-Programm, das eine verkleinerte Kopie von Flugzeuglackierungen für Microsoft Flight Simulator 2024 erstellt. Der Quellordner bleibt unverändert; die Paketstruktur wird übernommen und unterstützte Texturen oberhalb einer einstellbaren Maximalgröße werden verkleinert.
 
 > **Aktuellster bereitgestellter Quellstand:** v1.6 – KTX2P-Behandlung.  
@@ -63,4 +65,8 @@ Die ursprünglichen ZIP-Snapshots befinden sich im GitHub-Importpaket unter `his
 
 ## Lizenz
 
-Der Projektinhaber hat noch keine Open-Source-Lizenz ausgewählt. Siehe [LICENSE_STATUS.md](LICENSE_STATUS.md). Bis eine Lizenz ausgewählt und hinzugefügt wurde, besteht keine allgemeine Erlaubnis, den Code weiterzuverwenden, zu verändern oder weiterzuverbreiten.
+Copyright (C) 2026 p0lfilt3r.
+
+Dieses Projekt steht ausschließlich unter der **GNU General Public License Version 3.0 (GPL-3.0-only)**. Die Nutzung, Untersuchung, Veränderung und Weitergabe der Software sind unter den Bedingungen dieser Lizenz erlaubt. **Kommerzielle Nutzung ist ausdrücklich zulässig**; die GPL enthält keinen Ausschluss kommerzieller Nutzung. Bei der Weitergabe des Programms oder veränderter Versionen müssen die jeweils geltenden GPL-Anforderungen an Quellcode, Lizenzhinweise und Weitergabe eingehalten werden.
+
+Der vollständige Lizenztext steht in [LICENSE](LICENSE). Diese Lizenz gilt für den Programmcode dieses Projekts; externe Werkzeuge unterliegen weiterhin ihren eigenen Lizenzen und Nutzungsbedingungen.
