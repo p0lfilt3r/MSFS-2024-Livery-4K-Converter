@@ -1,7 +1,9 @@
 # License status
 
-No software license has been selected by the project owner yet.
+The project owner has selected the **GNU General Public License version 3.0 only (GPL-3.0-only)**.
 
-Before making this repository public as an open-source project, choose a license and add its full text as `LICENSE`. Until then, the default copyright rules apply; public visibility alone does not grant general permission to reuse, modify, or redistribute the code.
+Copyright (C) 2026 p0lfilt3r.
 
-Also review the licenses and redistribution terms of all external tools. They are not included in this repository.
+The full license text is provided in [LICENSE](LICENSE). Use, modification, and redistribution are permitted under the terms of GPL-3.0-only. **Commercial use is permitted**; this project does not impose a non-commercial restriction.
+
+The license applies to this project's code. External tools are not bundled in this repository and remain subject to their own licenses and distribution terms. Review those terms before downloading, using, or redistributing the tools.
