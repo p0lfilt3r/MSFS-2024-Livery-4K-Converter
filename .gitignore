@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build / packaging
+build/
+dist/
+*.spec
+
+# Logs and local settings
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
