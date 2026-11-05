@@ -1,5 +1,5 @@
-Version 1.6 – BC7-KTX2, GPU-Beschleunigung und KTX2P-Fix
-========================================================
+Hinweis zu BC7-KTX2 und GPU-Beschleunigung – Programmversion 1.7
+================================================================
 
 BC7-KTX2 wird roh aus dem KTX2-Container entnommen, als DDS/BC7 an DirectXTex
 übergeben und nach dem Verkleinern wieder als KTX2 verpackt. KTX2-DFD und die

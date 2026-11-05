@@ -1,4 +1,4 @@
-MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)
+MSFS 2024 – Livery 4K Converter 1.7 (Batch-Verarbeitung)
 ==================================================
 
 SPRACHAUSWAHL (NEU IN VERSION 1.5)
@@ -7,6 +7,17 @@ SPRACHAUSWAHL (NEU IN VERSION 1.5)
 - Die Auswahl gilt für Fenstertexte, Einstellungen, Dialoge, Statusmeldungen und neue Protokolleinträge.
 - Die zuletzt gewählte Sprache wird automatisch für den nächsten Programmstart gespeichert.
 - Bereits vorhandene Protokolleinträge behalten ihre ursprüngliche Sprache.
+
+WAS NEU IN VERSION 1.7
+----------------------
+- Das Programmfenster passt seine Startgröße an die verfügbare Bildschirmfläche an.
+- Ist der Bildschirm zu klein, erscheint rechts eine vertikale Scroll-Leiste. Dadurch bleiben auch die unteren Schaltflächen erreichbar.
+- Nach Auswahl eines Quellordners wird der Zielordner automatisch auf denselben Pfad mit angehängtem _4K gesetzt.
+- Ein nicht vorhandener Zielordner wird beim Start der Konvertierung automatisch erstellt.
+- Neue Batch-Verarbeitung: Alle untergeordneten MSFS-Livery-Paketordner werden rekursiv erkannt und einzeln konvertiert.
+- Für jedes Paket wird neben dem Quellordner ein Ausgabeordner mit angehängtem _4K erstellt.
+- Bereits vorhandene _4K-Ausgabeordner werden vor dem Batch-Lauf vollständig geleert und neu aufgebaut.
+- Ordner, deren Name auf _4K endet, werden niemals als Quell-Liveries behandelt.
 
 WAS NEU IN VERSION 1.6
 ----------------------
@@ -24,6 +35,16 @@ WAS NEU IN VERSION 1.6
   werden, um layout.json und – sofern vorhanden – total_package_size in manifest.json
   zu aktualisieren.
 - Die Quelldateien werden niemals verändert.
+
+BATCH-VERARBEITUNG
+------------------
+- Den übergeordneten Ordner auswählen, der mehrere Livery-Pakete enthält.
+- Die Option „Batch-Verarbeitung“ aktivieren und die Konvertierung starten.
+- Das Programm sucht darunter nach MSFS-Paketwurzeln (mit SimObjects/Airplanes oder mit SimObjects plus manifest.json/layout.json).
+- Jedes erkannte Paket wird in einen benachbarten Ordner mit dem Namen des Quellordners plus _4K kopiert und verarbeitet.
+- Bereits vorhandene _4K-Zielordner werden nach einer Bestätigungsabfrage vollständig geleert. Dateien in den Quellpaketen bleiben unverändert.
+- Vorhandene Ordner mit der Endung _4K werden bei der Suche übersprungen. Sie gelten ausschließlich als Ausgabeordner.
+- Kategorien und beliebig tiefe übergeordnete Ordner bleiben erhalten; die einzelnen _4K-Ausgaben liegen jeweils neben ihrer Quell-Livery.
 
 WAS DAS PROGRAMM MACHT
 ----------------------

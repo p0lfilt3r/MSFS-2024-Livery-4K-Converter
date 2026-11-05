@@ -1,4 +1,4 @@
-MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)
+MSFS 2024 – Livery 4K Converter 1.7 (Batch Processing)
 =================================================
 
 LANGUAGE SELECTION (NEW IN VERSION 1.5)
@@ -7,6 +7,17 @@ LANGUAGE SELECTION (NEW IN VERSION 1.5)
 - The selection applies to window labels, settings, dialogs, status messages and new log entries.
 - The selected language is saved automatically and restored on the next launch.
 - Existing log entries remain in the language in which they were originally written.
+
+WHAT'S NEW IN VERSION 1.7
+-------------------------
+- The application chooses its initial window size based on the available display area.
+- If the display is too small, a vertical scrollbar appears on the right so the bottom action buttons remain reachable.
+- Selecting a source folder automatically fills the destination with the same path and an appended _4K suffix.
+- A missing destination folder is created automatically when conversion starts.
+- New batch mode: nested MSFS livery package folders are detected recursively and converted one by one.
+- Each package is written to a sibling output folder whose name is the source folder name plus _4K.
+- Existing _4K output folders are cleared completely and rebuilt before a batch run.
+- Folders whose names end in _4K are never treated as source liveries.
 
 WHAT'S NEW IN VERSION 1.6
 -------------------------
@@ -23,6 +34,16 @@ WHAT'S NEW IN VERSION 1.6
 - Optionally, MSFSLayoutGenerator.exe can be run automatically after conversion to
   update layout.json and, if present, total_package_size in manifest.json.
 - Source files are never modified.
+
+BATCH PROCESSING
+----------------
+- Select the parent folder that contains multiple livery packages.
+- Enable “Batch processing” and start conversion.
+- The application searches recursively for MSFS package roots (folders with SimObjects/Airplanes, or with SimObjects plus manifest.json/layout.json).
+- Each detected package is copied and processed into a sibling folder named after the source folder with _4K appended.
+- Existing _4K destination folders are completely cleared after a confirmation prompt. Source packages are never modified.
+- Existing folders ending in _4K are skipped during discovery and are treated only as output folders.
+- Parent categories and nested folder structures are retained; each _4K output is placed next to its source livery.
 
 WHAT THE PROGRAM DOES
 ---------------------

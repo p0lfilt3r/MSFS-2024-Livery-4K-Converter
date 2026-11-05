@@ -2,6 +2,15 @@
 
 This history is reconstructed from the ZIP snapshots supplied by the project owner. The exact original Git commits and reliable creation timestamps are not available in ZIP archives. See `HISTORY_RECONSTRUCTION.md` for details.
 
+## v1.7 – Batch processing and responsive window
+
+- Adds recursive batch processing of nested livery packages.
+- Automatically creates corresponding `_4K` destination folders.
+- Rebuilds existing destination folders when processing starts.
+- Excludes generated `_4K` folders from source discovery.
+- Adjusts the application window to the available screen size.
+- Adds a vertical scrollbar on the right for smaller displays.
+
 ## v1.6 – KTX2P handling
 - Adds handling for copied `.ktx2p` files in the destination package after successful KTX2 conversion.
 - Updates German and English documentation and technical notes.

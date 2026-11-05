@@ -6,7 +6,7 @@
 
 A Windows desktop utility that creates a lower-resolution copy of Microsoft Flight Simulator 2024 aircraft-livery packages. It keeps the source package unchanged, copies the package structure, and resizes supported textures above a configured maximum dimension.
 
-> **Current supplied source snapshot:** v1.6 – KTX2P handling.  
+> **Current supplied source snapshot:** v1.7 – batch processing and responsive window.  
 > The Git history is reconstructed from seven ZIP snapshots. It includes the initial pre-KTX2 converter, a later archive labelled `v2` that adds early KTX2 processing, and the subsequent v1.3–v1.6 snapshots.
 
 ## Features in the latest supplied snapshot

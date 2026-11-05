@@ -26,7 +26,7 @@ try:
 except ImportError:
     Image = None  # DDS header reading still works without Pillow.
 
-APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.6 (KTX2P Fix)"
+APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.7 (Batch Processing)"
 
 APP_LANGUAGE = "de"
 
@@ -668,6 +668,59 @@ def remove_stale_ktx2p_files(package_root: Path) -> tuple[list[Path], list[tuple
     return removed, errors, total_bytes
 
 
+def is_4k_output_directory(name: str) -> bool:
+    """Return True for converter output directories, which must never be batch sources."""
+    return name.casefold().endswith("_4k")
+
+
+def is_livery_package_directory(folder: Path, directory_names: list[str], file_names: list[str]) -> bool:
+    """Recognize an MSFS livery package root without treating its internal folders as packages."""
+    dirs_by_fold = {name.casefold(): name for name in directory_names}
+    simobjects_name = dirs_by_fold.get("simobjects")
+    if not simobjects_name:
+        return False
+    simobjects = folder / simobjects_name
+    has_airplanes = any((simobjects / name).is_dir() for name in ("Airplanes", "airplanes"))
+    files_by_fold = {name.casefold() for name in file_names}
+    has_manifest = "manifest.json" in files_by_fold
+    has_layout = "layout.json" in files_by_fold
+    return has_airplanes or ((has_manifest or has_layout) and simobjects.is_dir())
+
+
+def discover_livery_packages(source_root: Path) -> list[Path]:
+    """Find nested livery package roots; prune each package and ignore all *_4K folders."""
+    source_root = source_root.resolve()
+    if is_4k_output_directory(source_root.name):
+        return []
+    packages: list[Path] = []
+    for current_root, dir_names, file_names in os.walk(source_root):
+        current = Path(current_root)
+        dir_names[:] = sorted(
+            name for name in dir_names
+            if not is_4k_output_directory(name) and not name.startswith(".")
+        )
+        if current != source_root and is_livery_package_directory(current, dir_names, file_names):
+            packages.append(current)
+            # A package may contain many subdirectories. They are package content,
+            # not separate liveries, so do not descend further.
+            dir_names[:] = []
+    return sorted(packages, key=lambda p: str(p).casefold())
+
+
+def clear_directory_contents(folder: Path) -> None:
+    """Clear an existing converter output folder without following symlinks."""
+    if folder.is_symlink():
+        raise RuntimeError(f"Ausgabeordner ist ein symbolischer Link und wird aus Sicherheitsgründen nicht geleert: {folder}")
+    folder.mkdir(parents=True, exist_ok=True)
+    for child in folder.iterdir():
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        elif child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 class ConverterApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -675,17 +728,21 @@ class ConverterApp:
         global APP_LANGUAGE
         APP_LANGUAGE = self.language
         self.root.title(APP_TITLE)
-        self.root.geometry("1000x930")
-        self.root.minsize(880, 800)
+        self.root.resizable(True, True)
 
         self.events: queue.Queue[tuple] = queue.Queue()
         self.worker: Optional[threading.Thread] = None
         self.cancel_event = threading.Event()
         self.busy = False
+        self.batch_mode_active = False
+        self._batch_ui_was_enabled = False
+        self.batch_completed = 0
+        self.batch_failures = 0
         self.log_history: list[str] = []
 
         self.source_var = tk.StringVar()
         self.target_var = tk.StringVar()
+        self.batch_var = tk.BooleanVar(value=False)
         self.texconv_var = tk.StringVar(value=find_texconv())
         self.ktx_var = tk.StringVar(value=find_ktx())
         self.layout_var = tk.StringVar(value=find_layout_generator())
@@ -696,6 +753,7 @@ class ConverterApp:
         self.progress_var = tk.DoubleVar(value=0)
 
         self._build_ui()
+        self._set_initial_window_geometry()
         if not self.texconv_var.get():
             self._append_log(self.t(
                 "Hinweis: texconv.exe wurde nicht gefunden. Für DDS und normale Bilddateien auswählen/installieren.",
@@ -736,6 +794,77 @@ class ConverterApp:
             # Language switching still works for this session if settings cannot be saved.
             pass
 
+    def _set_initial_window_geometry(self) -> None:
+        """Choose the largest useful initial size that fits the current display."""
+        self.root.update_idletasks()
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        requested_w = max(1000, self.outer_frame.winfo_reqwidth() + 36)
+        requested_h = max(650, self.outer_frame.winfo_reqheight() + 42)
+        width = min(1100, requested_w, max(620, screen_w - 60))
+        height = min(1300, requested_h, max(460, screen_h - 80))
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        self.root.minsize(min(640, width), min(440, height))
+        self.root.update_idletasks()
+        self._update_scroll_region()
+
+    def _resize_scroll_content(self, event=None) -> None:
+        if hasattr(self, "canvas_window"):
+            canvas_width = max(1, self.scroll_canvas.winfo_width())
+            self.scroll_canvas.itemconfigure(self.canvas_window, width=canvas_width)
+            wraplength = max(320, min(900, canvas_width - 56))
+            for label in getattr(self, "_wrapped_labels", []):
+                try:
+                    label.configure(wraplength=wraplength)
+                except tk.TclError:
+                    pass
+        self._update_scroll_region()
+
+    def _update_scroll_region(self, event=None) -> None:
+        if not hasattr(self, "scroll_canvas"):
+            return
+        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        self.root.after_idle(self._update_scrollbar_visibility)
+
+    def _update_scrollbar_visibility(self) -> None:
+        if not hasattr(self, "content_frame") or not self.content_frame.winfo_exists():
+            return
+        required = self.content_frame.winfo_reqheight()
+        available = self.scroll_canvas.winfo_height()
+        needs_scroll = available > 1 and required > available + 3
+        visible = bool(self.scrollbar.winfo_manager())
+        if needs_scroll and not visible:
+            self.scrollbar.grid()
+            self.scroll_canvas.yview_moveto(0)
+        elif not needs_scroll and visible:
+            self.scrollbar.grid_remove()
+            self.scroll_canvas.yview_moveto(0)
+
+    def _on_mousewheel(self, event):
+        if self.scrollbar.winfo_manager():
+            self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"
+        return None
+
+    def _toggle_batch_mode(self) -> None:
+        batch_enabled = bool(self.batch_var.get())
+        state = "disabled" if batch_enabled else "normal"
+        if hasattr(self, "target_entry"):
+            self.target_entry.configure(state=state)
+            self.target_browse_button.configure(state=state)
+        source_text = self.source_var.get().strip()
+        if batch_enabled:
+            self.target_var.set(self.t(
+                "Automatische *_4K-Zielordner neben jeder Livery",
+                "Automatic *_4K folders beside each livery"
+            ))
+        elif self._batch_ui_was_enabled and source_text and Path(source_text).is_dir():
+            source = Path(source_text)
+            self.target_var.set(str(source.with_name(f"{source.name}_4K")))
+        self._batch_ui_was_enabled = batch_enabled
+
     def _change_language(self, _event=None) -> None:
         if self.busy:
             return
@@ -754,6 +883,7 @@ class ConverterApp:
         # Rebuild the visible controls to apply the selected language consistently.
         for child in self.root.winfo_children():
             child.destroy()
+        self._wrapped_labels = []
 
         style = ttk.Style()
         try:
@@ -764,12 +894,33 @@ class ConverterApp:
         style.configure("Info.TLabel", font=("Segoe UI", 9))
         style.configure("Action.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 8))
 
-        outer = ttk.Frame(self.root, padding=18)
-        outer.pack(fill="both", expand=True)
+        viewport = ttk.Frame(self.root)
+        viewport.pack(fill="both", expand=True)
+        viewport.grid_rowconfigure(0, weight=1)
+        viewport.grid_columnconfigure(0, weight=1)
+        viewport.grid_columnconfigure(1, weight=0)
+
+        # Let the canvas occupy the main column and place the optional vertical
+        # scrollbar at the right edge of the application window.
+        self.scroll_canvas = tk.Canvas(viewport, highlightthickness=0, borderwidth=0)
+        self.scroll_canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=lambda *args: self.scroll_canvas.yview(*args))
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.scrollbar.grid_remove()
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.content_frame = ttk.Frame(self.scroll_canvas)
+        self.canvas_window = self.scroll_canvas.create_window((0, 0), window=self.content_frame, anchor="nw")
+        self.content_frame.bind("<Configure>", self._update_scroll_region)
+        self.scroll_canvas.bind("<Configure>", self._resize_scroll_content)
+        self.scroll_canvas.unbind_all("<MouseWheel>")
+        self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.outer_frame = ttk.Frame(self.content_frame, padding=18)
+        self.outer_frame.pack(fill="both", expand=True)
+        outer = self.outer_frame
 
         top = ttk.Frame(outer)
         top.pack(fill="x")
-        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.6", style="Title.TLabel").pack(side="left", anchor="w")
+        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.7", style="Title.TLabel").pack(side="left", anchor="w")
         language_box = ttk.Frame(top)
         language_box.pack(side="right", padx=(10, 0))
         ttk.Label(language_box, text=self.t("Sprache:", "Language:")).pack(side="left", padx=(0, 6))
@@ -791,14 +942,35 @@ class ConverterApp:
         paths.pack(fill="x")
         self._path_row(paths, 0, self.t("Quellordner:", "Source folder:"), self.source_var, self._choose_source,
                        self.t("Ordner auswählen …", "Browse folder …"))
-        self._path_row(paths, 1, self.t("Zielordner:", "Destination:"), self.target_var, self._choose_target,
-                       self.t("Ordner auswählen …", "Browse folder …"))
+        self.target_entry, self.target_browse_button = self._path_row(
+            paths, 1, self.t("Zielordner:", "Destination:"), self.target_var, self._choose_target,
+            self.t("Ordner auswählen …", "Browse folder …")
+        )
         self._path_row(paths, 2, "texconv.exe:", self.texconv_var, self._choose_texconv,
                        self.t("Datei auswählen …", "Browse file …"))
         self._path_row(paths, 3, "ktx.exe:", self.ktx_var, self._choose_ktx,
                        self.t("Datei auswählen …", "Browse file …"))
         self._path_row(paths, 4, self.t("Layout-Tool:", "Layout tool:"), self.layout_var, self._choose_layout,
                        self.t("Datei auswählen …", "Browse file …"))
+        self.batch_checkbox = ttk.Checkbutton(
+            paths,
+            text=self.t(
+                "Batch-Verarbeitung: alle untergeordneten Livery-Pakete automatisch als *_4K konvertieren",
+                "Batch processing: automatically convert all nested livery packages into *_4K folders"
+            ),
+            variable=self.batch_var,
+            command=self._toggle_batch_mode,
+        )
+        self.batch_checkbox.grid(row=5, column=1, columnspan=2, sticky="w", pady=(8, 2))
+        self._wrapped_label(
+            paths,
+            text=self.t(
+                "Im Batch-Modus werden erkannte MSFS-Paketordner verarbeitet. Vorhandene *_4K-Ausgabeordner werden vollständig geleert und neu erstellt; *_4K-Ordner werden nie als Quelle verwendet.",
+                "Batch mode processes detected MSFS package folders. Existing *_4K output folders are cleared and rebuilt; *_4K folders are never treated as sources."
+            ),
+            style="Info.TLabel", wraplength=850,
+        ).grid(row=6, column=1, columnspan=2, sticky="w", pady=(0, 4))
+        self._toggle_batch_mode()
 
         settings = ttk.LabelFrame(outer, text=self.t("Einstellungen", "Settings"), padding=12)
         settings.pack(fill="x", pady=(12, 0))
@@ -807,7 +979,7 @@ class ConverterApp:
         ttk.Label(row, text=self.t("Maximale Kantenlänge:", "Maximum texture dimension:")).pack(side="left")
         ttk.Entry(row, textvariable=self.max_size_var, width=9).pack(side="left", padx=(8, 6))
         ttk.Label(row, text=self.t("Pixel (Standard: 4096 = 4K)", "pixels (default: 4096 = 4K)")).pack(side="left")
-        ttk.Label(
+        self._wrapped_label(
             settings,
             text=self.t(
                 "Texturen, deren Breite oder Höhe größer ist, werden proportional verkleinert. "
@@ -827,7 +999,7 @@ class ConverterApp:
         ).pack(side="left")
         ttk.Label(gpu_row, text=self.t("Adapter-Index:", "Adapter index:")).pack(side="left", padx=(16, 4))
         ttk.Entry(gpu_row, textvariable=self.gpu_index_var, width=5).pack(side="left")
-        ttk.Label(
+        self._wrapped_label(
             settings,
             text=self.t(
                 "NVIDIA-GPU: Index 0 ist der Windows-Standardadapter. Bei Notebooks mit integrierter "
@@ -841,7 +1013,7 @@ class ConverterApp:
 
         note = ttk.Frame(outer)
         note.pack(fill="x", pady=(10, 0))
-        ttk.Label(
+        self._wrapped_label(
             note,
             text=self.t(
                 "Der Zielordner wird als vollständige Kopie der Lackierung aufgebaut: alle Dateien "
@@ -855,7 +1027,7 @@ class ConverterApp:
             ),
             style="Info.TLabel", wraplength=850,
         ).pack(anchor="w")
-        ttk.Label(
+        self._wrapped_label(
             note,
             text=self.t(
                 "Paket: Ist im Quellordner eine layout.json vorhanden, kann der MSFS Layout Generator "
@@ -865,7 +1037,7 @@ class ConverterApp:
             ),
             style="Info.TLabel", wraplength=850,
         ).pack(anchor="w", pady=(3, 0))
-        ttk.Label(
+        self._wrapped_label(
             note,
             text=self.t(
                 "KTX2: BC7 wird über DirectXTex verkleinert und als KTX2 mit erhaltenen ASOBO-Metadaten neu verpackt. "
@@ -924,13 +1096,23 @@ class ConverterApp:
             self.language_combo.configure(state="disabled")
             self.start_button.configure(state="disabled")
             self.cancel_button.configure(state="normal")
+            self.batch_checkbox.configure(state="disabled")
+        self._update_scroll_region()
 
-    def _path_row(self, parent, row_index, label, variable, command, button_text) -> None:
+    def _wrapped_label(self, parent, **kwargs):
+        kwargs.setdefault("wraplength", 850)
+        label = ttk.Label(parent, **kwargs)
+        self._wrapped_labels.append(label)
+        return label
+
+    def _path_row(self, parent, row_index, label, variable, command, button_text):
         ttk.Label(parent, text=label, width=16).grid(row=row_index, column=0, sticky="w", pady=4)
         entry = ttk.Entry(parent, textvariable=variable)
         entry.grid(row=row_index, column=1, sticky="ew", padx=(6, 8), pady=4)
-        ttk.Button(parent, text=button_text, command=command).grid(row=row_index, column=2, pady=4)
+        button = ttk.Button(parent, text=button_text, command=command)
+        button.grid(row=row_index, column=2, pady=4)
         parent.columnconfigure(1, weight=1)
+        return entry, button
 
     def _choose_source(self) -> None:
         selected = filedialog.askdirectory(title=self.t(
@@ -939,8 +1121,8 @@ class ConverterApp:
         if selected:
             self.source_var.set(selected)
             src = Path(selected)
-            if not self.target_var.get().strip():
-                self.target_var.set(str(src.parent / f"{src.name}_4K"))
+            self.target_var.set(str(src.with_name(f"{src.name}_4K")))
+            self._toggle_batch_mode()
 
     def _choose_target(self) -> None:
         selected = filedialog.askdirectory(title=self.t(
@@ -997,44 +1179,73 @@ class ConverterApp:
                 "Bitte einen gültigen Quellordner auswählen.", "Please select a valid source folder."
             ))
             return
-        if not target_text:
-            messagebox.showerror(self.t("Zielordner fehlt", "Destination folder missing"), self.t(
-                "Bitte einen Zielordner auswählen.", "Please select a destination folder."
-            ))
-            return
-        source = Path(source_text).resolve()
-        target = Path(target_text).resolve()
-        if source == target:
-            messagebox.showerror(self.t("Ungültiger Zielordner", "Invalid destination folder"), self.t(
-                "Quell- und Zielordner dürfen nicht identisch sein.", "The source and destination folders must be different."
-            ))
-            return
-        if source.is_relative_to(target):
-            messagebox.showerror(self.t("Ungültiger Zielordner", "Invalid destination folder"), self.t(
-                "Der Zielordner darf nicht oberhalb des Quellordners liegen. Bitte einen separaten Zielordner auswählen.",
-                "The destination folder must not be a parent of the source folder. Please select a separate destination folder."
-            ))
-            return
-        if target.exists() and any(target.iterdir()):
-            proceed = messagebox.askyesno(
-                self.t("Zielordner ist nicht leer", "Destination folder is not empty"),
-                self.t(
-                    "Vorhandene Dateien mit gleichem relativen Pfad werden überschrieben. Dateien, die nicht mehr in der Quelle vorkommen, werden NICHT gelöscht. Für eine saubere Paketkopie empfiehlt sich ein leerer Zielordner.\n\nFortfahren?",
-                    "Existing files with the same relative path will be overwritten. Files that no longer exist in the source will NOT be deleted. An empty destination folder is recommended for a clean package copy.\n\nContinue?"
-                ),
-            )
-            if not proceed:
-                return
 
-        present_extensions = set()
+        source_root = Path(source_text).resolve()
+        batch_enabled = self.batch_var.get()
+        jobs: list[tuple[Path, Path]] = []
+        if is_4k_output_directory(source_root.name):
+            messagebox.showerror(self.t("Ungültiger Quellordner", "Invalid source folder"), self.t(
+                "Ein Ordner mit der Endung _4K ist ein Ausgabeordner und darf nicht als Quelle verwendet werden. Bitte den ursprünglichen Livery-Ordner auswählen.",
+                "A folder ending in _4K is an output folder and cannot be used as a source. Please select the original livery folder."
+            ))
+            return
+        if batch_enabled:
+            packages = discover_livery_packages(source_root)
+            if not packages:
+                messagebox.showerror(self.t("Keine Liveries gefunden", "No liveries found"), self.t(
+                    "Unterhalb des gewählten Quellordners wurden keine MSFS-Livery-Pakete erkannt. Wähle den übergeordneten Ordner, der die einzelnen Pakete enthält.",
+                    "No MSFS livery packages were detected below the selected source folder. Select the parent folder that contains the individual packages."
+                ))
+                return
+            jobs = [(package, package.with_name(f"{package.name}_4K")) for package in packages]
+            existing_outputs = [target for _, target in jobs if target.exists()]
+            if existing_outputs:
+                preview = "\n".join(f"• {p}" for p in existing_outputs[:8])
+                extra = len(existing_outputs) - min(len(existing_outputs), 8)
+                if extra:
+                    preview += self.t(f"\n… und {extra} weitere Ordner", f"\n… and {extra} more folders")
+                proceed = messagebox.askyesno(
+                    self.t("Vorhandene 4K-Zielordner überschreiben?", "Overwrite existing 4K output folders?"),
+                    self.t(
+                        f"Es wurden {len(packages)} Liveries gefunden. {len(existing_outputs)} zugehörige _4K-Zielordner existieren bereits. Deren kompletter Inhalt wird gelöscht und neu erstellt. Die Quell-Liveries bleiben unverändert.\n\n{preview}\n\nFortfahren?",
+                        f"Found {len(packages)} liveries. {len(existing_outputs)} corresponding _4K output folders already exist. Their entire contents will be deleted and rebuilt. Source liveries remain unchanged.\n\n{preview}\n\nContinue?"
+                    ),
+                )
+                if not proceed:
+                    return
+            self.target_var.set(self.t("Automatische *_4K-Zielordner neben jeder Livery", "Automatic *_4K folders beside each livery"))
+        else:
+            if not target_text:
+                target_text = str(source_root.with_name(f"{source_root.name}_4K"))
+                self.target_var.set(target_text)
+            target = Path(target_text).resolve()
+            if source_root == target or source_root.is_relative_to(target) or target.is_relative_to(source_root):
+                messagebox.showerror(self.t("Ungültiger Zielordner", "Invalid destination folder"), self.t(
+                    "Quell- und Zielordner müssen getrennte Ordner sein. Der Zielordner darf weder im Quellordner liegen noch dessen übergeordneter Ordner sein.",
+                    "Source and destination must be separate folders. The destination cannot be inside the source folder or be its parent."
+                ))
+                return
+            if target.exists() and any(target.iterdir()):
+                proceed = messagebox.askyesno(
+                    self.t("Zielordner ist nicht leer", "Destination folder is not empty"),
+                    self.t(
+                        "Vorhandene Dateien mit gleichem relativen Pfad werden überschrieben. Dateien, die nicht mehr in der Quelle vorkommen, werden nicht gelöscht. Für eine saubere Paketkopie empfiehlt sich ein leerer Zielordner.\n\nFortfahren?",
+                        "Existing files with the same relative path will be overwritten. Files that no longer exist in the source will not be deleted. An empty destination folder is recommended for a clean package copy.\n\nContinue?"
+                    ),
+                )
+                if not proceed:
+                    return
+            jobs = [(source_root, target)]
+
+        present_extensions: set[str] = set()
         try:
-            for current_root, dirs, names in os.walk(source):
-                current_path = Path(current_root).resolve()
-                dirs[:] = [d for d in dirs if not (current_path / d).resolve().is_relative_to(target)]
-                for name in names:
-                    ext = Path(name).suffix.lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        present_extensions.add(ext)
+            for package_source, _package_target in jobs:
+                for current_root, dirs, names in os.walk(package_source):
+                    dirs[:] = [d for d in dirs if not is_4k_output_directory(d) and not d.startswith(".")]
+                    for name in names:
+                        ext = Path(name).suffix.lower()
+                        if ext in SUPPORTED_EXTENSIONS:
+                            present_extensions.add(ext)
         except OSError as exc:
             messagebox.showerror(self.t("Ordner kann nicht gelesen werden", "Cannot read folder"), str(exc))
             return
@@ -1072,7 +1283,7 @@ class ConverterApp:
         except ValueError:
             messagebox.showerror(self.t("Ungültige Größe", "Invalid size"), self.t(
                 "Die maximale Kantenlänge muss eine Zahl zwischen 256 und 32768 sein.",
-                "The maximum texture dimension must be a number between 256 and 32768."
+                "The maximum texture dimension must be between 256 and 32768."
             ))
             return
 
@@ -1093,23 +1304,84 @@ class ConverterApp:
         self.progress_var.set(0)
         self.status_var.set(self.t("Suche Texturen …", "Scanning textures …"))
         self.busy = True
+        self.batch_mode_active = batch_enabled
+        self.batch_completed = 0
+        self.batch_failures = 0
         self.start_button.configure(state="disabled")
         self.cancel_button.configure(state="normal")
         self.language_combo.configure(state="disabled")
-        self._append_log("\n" + "=" * 72)
-        self._append_log(self.t(f"Start: {source}", f"Source: {source}"))
-        self._append_log(self.t(f"Ziel:  {target}", f"Destination: {target}"))
-        self._append_log(
-            self.t(f"BC7-Beschleunigung: DirectCompute-Adapter {gpu_adapter}",
-                   f"BC7 acceleration: DirectCompute adapter {gpu_adapter}") if gpu_adapter is not None
-            else self.t("BC7-Beschleunigung: CPU (GPU deaktiviert)", "BC7 acceleration: CPU (GPU disabled)")
-        )
-        self.worker = threading.Thread(
-            target=self._worker_main,
-            args=(source, target, texconv_path, ktx_path, layout_path, max_size, gpu_adapter, self.language),
-            daemon=True,
-        )
+        self.batch_checkbox.configure(state="disabled")
+        if batch_enabled:
+            self._append_log("\n" + "=" * 72)
+            self._append_log(self.t(
+                f"Batch gestartet: {len(jobs)} Livery-Pakete gefunden.",
+                f"Batch started: found {len(jobs)} livery packages."
+            ))
+            self.worker = threading.Thread(
+                target=self._batch_worker_main,
+                args=(jobs, texconv_path, ktx_path, layout_path, max_size, gpu_adapter, self.language),
+                daemon=True,
+            )
+        else:
+            source, target = jobs[0]
+            self._append_log("\n" + "=" * 72)
+            self._append_log(self.t(f"Start: {source}", f"Source: {source}"))
+            self._append_log(self.t(f"Ziel:  {target}", f"Destination: {target}"))
+            self._append_log(
+                self.t(f"BC7-Beschleunigung: DirectCompute-Adapter {gpu_adapter}",
+                       f"BC7 acceleration: DirectCompute adapter {gpu_adapter}") if gpu_adapter is not None
+                else self.t("BC7-Beschleunigung: CPU (GPU deaktiviert)", "BC7 acceleration: CPU (GPU disabled)")
+            )
+            self.worker = threading.Thread(
+                target=self._worker_main,
+                args=(source, target, texconv_path, ktx_path, layout_path, max_size, gpu_adapter, self.language),
+                daemon=True,
+            )
         self.worker.start()
+
+    def _batch_worker_main(
+        self,
+        jobs: list[tuple[Path, Path]],
+        texconv: Optional[Path],
+        ktx: Optional[Path],
+        layout_generator: Optional[Path],
+        max_size: int,
+        gpu_adapter: Optional[int],
+        language: str,
+    ) -> None:
+        """Run each detected livery package sequentially into its sibling *_4K folder."""
+        tx = lambda de, en: de if language == "de" else en
+        total = len(jobs)
+        attempted = 0
+        for index, (source, target) in enumerate(jobs, start=1):
+            if self.cancel_event.is_set():
+                break
+            self.events.put(("batch_progress", index - 1, total))
+            self.events.put(("status", tx(
+                f"Batch {index}/{total}: {source.name}",
+                f"Batch {index}/{total}: {source.name}"
+            )))
+            self.events.put(("log", tx(
+                f"\n[{index}/{total}] Livery: {source}",
+                f"\n[{index}/{total}] Livery: {source}"
+            )))
+            try:
+                # A *_4K folder is a dedicated output. Remove stale files from earlier runs.
+                if target.exists():
+                    clear_directory_contents(target)
+                else:
+                    target.mkdir(parents=True, exist_ok=True)
+                self._worker_main(source, target, texconv, ktx, layout_generator, max_size, gpu_adapter, language)
+            except Exception as exc:
+                self.events.put(("batch_error", tx(
+                    f"Batch-Fehler bei {source.name}: {exc}",
+                    f"Batch error for {source.name}: {exc}"
+                )))
+            attempted += 1
+            self.events.put(("batch_progress", index, total))
+            if self.cancel_event.is_set():
+                break
+        self.events.put(("batch_finished", attempted, total, self.cancel_event.is_set()))
 
     def cancel(self) -> None:
         self.cancel_event.set()
@@ -1145,7 +1417,8 @@ class ConverterApp:
             target_resolved = target.resolve()
             for current_root, dirs, names in os.walk(source):
                 current_path = Path(current_root).resolve()
-                dirs[:] = [d for d in dirs if not (current_path / d).resolve().is_relative_to(target_resolved)]
+                dirs[:] = [d for d in dirs if not is_4k_output_directory(d) and not d.startswith(".")
+                           and not (current_path / d).resolve().is_relative_to(target_resolved)]
                 for name in names:
                     candidate = Path(current_root) / name
                     if candidate.is_file():
@@ -1368,26 +1641,64 @@ class ConverterApp:
                 elif kind == "progress":
                     _, current, total = event
                     self.progress_var.set(current * 100 / max(total, 1))
+                elif kind == "batch_progress":
+                    _, current, total = event
+                    self.progress_var.set(current * 100 / max(total, 1))
                 elif kind == "finished":
                     _, result_text, copied, copy_failed, converted, failed, unreadable, unsupported, layout_result = event
-                    self.status_var.set(self.t(
+                    summary = self.t(
                         f"{result_text} Kopiert: {copied} (Fehler: {copy_failed}) | Verkleinert: {converted} (Fehler: {failed}) | Nicht lesbar: {unreadable} | Nicht unterstützt: {unsupported}",
                         f"{result_text} Copied: {copied} (errors: {copy_failed}) | Resized: {converted} (errors: {failed}) | Unreadable: {unreadable} | Unsupported: {unsupported}"
+                    )
+                    self._append_log(summary)
+                    self._append_log(self.t(f"layout.json: {layout_result}", f"layout.json: {layout_result}"))
+                    if self.batch_mode_active:
+                        self.batch_completed += 1
+                        self.status_var.set(self.t(
+                            f"Batch: {self.batch_completed} Paket(e) abgeschlossen …",
+                            f"Batch: {self.batch_completed} package(s) completed …"
+                        ))
+                    else:
+                        self.status_var.set(summary)
+                        self.busy = False
+                        self.start_button.configure(state="normal")
+                        self.cancel_button.configure(state="disabled")
+                        self.language_combo.configure(state="readonly")
+                        self.batch_checkbox.configure(state="normal")
+                        self._toggle_batch_mode()
+                elif kind == "batch_error":
+                    self.batch_failures += 1
+                    self._append_log(event[1])
+                elif kind == "batch_finished":
+                    _, attempted, total, cancelled = event
+                    self.batch_mode_active = False
+                    result = self.t("abgebrochen", "cancelled") if cancelled else self.t("abgeschlossen", "completed")
+                    self.status_var.set(self.t(
+                        f"Batch {result}: {attempted}/{total} Pakete gestartet; Fehler: {self.batch_failures}.",
+                        f"Batch {result}: {attempted}/{total} packages started; errors: {self.batch_failures}."
                     ))
                     self._append_log(self.status_var.get())
-                    self._append_log(self.t(f"layout.json: {layout_result}", f"layout.json: {layout_result}"))
                     self.busy = False
                     self.start_button.configure(state="normal")
                     self.cancel_button.configure(state="disabled")
                     self.language_combo.configure(state="readonly")
+                    self.batch_checkbox.configure(state="normal")
+                    self._toggle_batch_mode()
                 elif kind == "fatal":
-                    self.status_var.set(self.t("Abbruch wegen eines Fehlers", "Stopped because of an error"))
                     self._append_log(self.t("SCHWERER FEHLER: ", "FATAL ERROR: ") + event[1])
-                    self.busy = False
-                    self.start_button.configure(state="normal")
-                    self.cancel_button.configure(state="disabled")
-                    self.language_combo.configure(state="readonly")
-                    messagebox.showerror(self.t("Fehler", "Error"), event[1])
+                    if self.batch_mode_active:
+                        self.batch_failures += 1
+                        self.status_var.set(self.t("Fehler im aktuellen Batch-Paket – nächstes Paket wird geprüft …",
+                                                   "Error in current batch package – continuing with the next package …"))
+                    else:
+                        self.status_var.set(self.t("Abbruch wegen eines Fehlers", "Stopped because of an error"))
+                        self.busy = False
+                        self.start_button.configure(state="normal")
+                        self.cancel_button.configure(state="disabled")
+                        self.language_combo.configure(state="readonly")
+                        self.batch_checkbox.configure(state="normal")
+                        self._toggle_batch_mode()
+                        messagebox.showerror(self.t("Fehler", "Error"), event[1])
         except queue.Empty:
             pass
         self.root.after(120, self._process_events)

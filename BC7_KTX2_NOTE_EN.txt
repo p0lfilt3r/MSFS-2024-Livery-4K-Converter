@@ -1,5 +1,5 @@
-Version 1.6 – BC7-KTX2, GPU Acceleration and KTX2P Fix
-======================================================
+BC7-KTX2 and GPU Acceleration Notes – Application Version 1.7
+=============================================================
 
 BC7-KTX2 data is extracted in raw form from the KTX2 container, passed to DirectXTex
 as DDS/BC7, resized, and packaged back into KTX2. The KTX2 DFD and complete Key/Value

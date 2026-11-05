@@ -6,7 +6,7 @@
 
 Ein Windows-Programm, das eine verkleinerte Kopie von Flugzeuglackierungen für Microsoft Flight Simulator 2024 erstellt. Der Quellordner bleibt unverändert; die Paketstruktur wird übernommen und unterstützte Texturen oberhalb einer einstellbaren Maximalgröße werden verkleinert.
 
-> **Aktuellster bereitgestellter Quellstand:** v1.6 – KTX2P-Behandlung.  
+> **Aktuellster bereitgestellter Quellstand:** v1.7 – Stapelverarbeitung und responsives Fenster.  
 > Die Git-Historie wird aus sieben ZIP-Snapshots rekonstruiert. Enthalten sind der ursprüngliche Konverter ohne KTX2-Unterstützung, ein späteres Archiv mit der Bezeichnung `v2` und erster KTX2-Verarbeitung sowie die anschließenden Stände v1.3 bis v1.6.
 
 ## Funktionen des neuesten bereitgestellten Stands
