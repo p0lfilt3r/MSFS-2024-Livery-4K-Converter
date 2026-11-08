@@ -4,12 +4,16 @@
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+## Download v1.8
+
+[Download the v1.8 GitHub source archive (ZIP)](https://github.com/p0lfilt3r/MSFS-2024-Livery-4K-Converter/archive/refs/heads/release-v1.8.zip)
+
 A Windows desktop utility that creates a lower-resolution copy of Microsoft Flight Simulator 2024 aircraft-livery packages. It keeps the source package unchanged, copies the package structure, and resizes supported textures above a configured maximum dimension.
 
-> **Current supplied source snapshot:** v1.7 – batch processing and responsive window.  
+> **Current source snapshot:** v1.8 – original material properties preserved, recursive batch processing, and responsive window.  
 > The Git history is reconstructed from seven ZIP snapshots. It includes the initial pre-KTX2 converter, a later archive labelled `v2` that adds early KTX2 processing, and the subsequent v1.3–v1.6 snapshots.
 
-## Features in the latest supplied snapshot
+## Features in v1.8
 
 - Batch-processes a complete livery/package folder, including subfolders.
 - Copies non-texture files and preserves the directory structure.
@@ -19,6 +23,8 @@ A Windows desktop utility that creates a lower-resolution copy of Microsoft Flig
 - Can optionally invoke MSFSLayoutGenerator to rebuild `layout.json`.
 - Provides a German/English user interface.
 - Keeps source files unchanged and writes results to a separate destination folder.
+- Does not deliberately override material channels such as Roughness, Metallic, Ambient Occlusion, or alpha.
+- Textures within the configured size limit are copied byte-for-byte; oversized textures still use the standard resize/re-encode pipeline, which can cause pixel-level differences.
 
 ## Requirements
 

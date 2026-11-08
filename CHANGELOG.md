@@ -2,6 +2,14 @@
 
 This history is reconstructed from the ZIP snapshots supplied by the project owner. The exact original Git commits and reliable creation timestamps are not available in ZIP archives. See `HISTORY_RECONSTRUCTION.md` for details.
 
+## v1.8 – Original material preservation
+
+- Removes the surface-finish checkbox and the roughness/metalness sliders.
+- Removes deliberate COMP/ORM channel overrides.
+- Copies textures below the configured dimension limit byte-for-byte.
+- Oversized textures continue through the normal resize/re-encode pipeline; resampling, mipmap generation, and compression can cause technical pixel-level differences.
+- Retains recursive batch processing, `_4K` output folders, responsive window, and right-side scrollbar.
+
 ## v1.7 – Batch processing and responsive window
 
 - Adds recursive batch processing of nested livery packages.

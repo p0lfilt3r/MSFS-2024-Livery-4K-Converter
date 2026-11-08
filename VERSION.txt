@@ -1,3 +1,3 @@
 MSFS 2024 Livery 4K Converter
-Version: 1.7
-Release: Batch Processing, Responsive Window, Right-side Scrollbar
+Version: 1.8
+Release: Original Material Preservation, Batch Processing, Responsive Window

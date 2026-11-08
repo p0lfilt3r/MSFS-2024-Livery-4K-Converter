@@ -4,12 +4,16 @@
 
 [![Lizenz: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+## Download v1.8
+
+[GitHub-Quellarchiv v1.8 als ZIP herunterladen](https://github.com/p0lfilt3r/MSFS-2024-Livery-4K-Converter/archive/refs/heads/release-v1.8.zip)
+
 Ein Windows-Programm, das eine verkleinerte Kopie von Flugzeuglackierungen für Microsoft Flight Simulator 2024 erstellt. Der Quellordner bleibt unverändert; die Paketstruktur wird übernommen und unterstützte Texturen oberhalb einer einstellbaren Maximalgröße werden verkleinert.
 
-> **Aktuellster bereitgestellter Quellstand:** v1.7 – Stapelverarbeitung und responsives Fenster.  
+> **Aktueller Quellstand:** v1.8 – Erhalt der ursprünglichen Materialeigenschaften, rekursive Stapelverarbeitung und responsives Fenster.  
 > Die Git-Historie wird aus sieben ZIP-Snapshots rekonstruiert. Enthalten sind der ursprüngliche Konverter ohne KTX2-Unterstützung, ein späteres Archiv mit der Bezeichnung `v2` und erster KTX2-Verarbeitung sowie die anschließenden Stände v1.3 bis v1.6.
 
-## Funktionen des neuesten bereitgestellten Stands
+## Funktionen in v1.8
 
 - Stapelverarbeitung eines vollständigen Lackierungs-/Paketordners einschließlich Unterordnern.
 - Übernahme aller übrigen Dateien und Erhalt der Verzeichnisstruktur.
@@ -19,6 +23,8 @@ Ein Windows-Programm, das eine verkleinerte Kopie von Flugzeuglackierungen für 
 - Optionaler Aufruf von MSFSLayoutGenerator zur Neuerstellung der `layout.json`.
 - Deutsche und englische Programmoberfläche.
 - Quelldateien bleiben unverändert; die Ausgabe erfolgt in einem separaten Zielordner.
+- Materialkanäle wie Roughness, Metallic, Ambient Occlusion und Alpha werden nicht gezielt überschrieben.
+- Texturen innerhalb der eingestellten Größenbegrenzung werden bytegenau kopiert. Größere Texturen durchlaufen weiterhin die normale Verkleinerung und Neukodierung; dabei sind pixelweise Abweichungen möglich.
 
 ## Voraussetzungen
 

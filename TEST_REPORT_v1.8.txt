@@ -1,0 +1,30 @@
+MSFS 2024 – Livery 4K Converter 1.8 – Test Report
+
+Scope
+- Surface-finish checkbox and roughness/metalness sliders removed.
+- No deliberate overrides of COMP/ORM material channels remain.
+- Single-package and recursive batch workflows retain the standard resize behavior.
+
+Automated checks
+- Python syntax compilation: PASS.
+- Module import: PASS.
+- Source contains no surface-finish controls or material-override symbols: PASS.
+- Below-limit texture copy path is byte-preserving: PASS.
+- Single-package worker and recursive batch workflow run without surface-override parameters: PASS.
+- Sample source package remains unchanged: PASS.
+- ZIP archive integrity: PASS.
+
+Material behavior
+- Textures within the configured size limit, including COMP/ORM maps, are copied byte-for-byte.
+- Oversized textures are resized and re-encoded by the standard pipeline. Resampling, mipmap generation and compression may cause pixel-level differences.
+- The converter does not deliberately overwrite Roughness, Metallic, Ambient Occlusion or alpha values.
+
+Not verified in this environment
+- Native Windows execution with the user's installed texconv.exe and ktx.exe.
+- Actual DDS/KTX2/BC7 processing with the installed Windows toolchain.
+- In-simulator appearance in Microsoft Flight Simulator 2024.
+
+Recommended final check
+1. Start the application and confirm that no surface-finish checkbox or sliders are present.
+2. Convert a test livery containing below-limit COMP/ORM maps and compare source and output files byte-for-byte.
+3. Test oversized DDS/KTX2 textures in MSFS 2024.
