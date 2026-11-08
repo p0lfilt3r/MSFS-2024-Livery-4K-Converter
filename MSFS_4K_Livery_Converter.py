@@ -26,7 +26,7 @@ try:
 except ImportError:
     Image = None  # DDS header reading still works without Pillow.
 
-APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.7 (Batch Processing)"
+APP_TITLE = "MSFS 2024 – Livery 4K Converter 1.8"
 
 APP_LANGUAGE = "de"
 
