@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import struct
 import subprocess
@@ -97,6 +98,9 @@ TEXCONV_FORMAT = {
     ".tif": ("tif", ".tif"),
     ".tiff": ("tif", ".tif"),
 }
+
+
+
 
 
 def find_texconv() -> str:
@@ -400,7 +404,7 @@ def convert_bc7_ktx2_via_texconv(
     height: int,
     gpu_adapter: Optional[int],
 ) -> None:
-    """Resize native BC7 KTX2 using DirectXTex without decoding via ktx extract PNG."""
+    """Resize native BC7 KTX2 without deliberately overriding material channels."""
     header = read_ktx2_header(source)
     if header.vk_format not in (145, 146):
         raise RuntimeError("Interner Aufruf für Nicht-BC7-KTX2.")
@@ -484,7 +488,7 @@ def convert_ktx2(
     height: int,
     gpu_adapter: Optional[int],
 ) -> None:
-    """Resize a standard 2D KTX2 file and regenerate its mip chain."""
+    """Resize a standard 2D KTX2 file without deliberately overriding material channels."""
     header = read_ktx2_header(source)
     if header.supercompression == 65536:
         raise RuntimeError(
@@ -497,7 +501,9 @@ def convert_ktx2(
             "Die Datei wurde unverändert übersprungen."
         )
     if header.vk_format in (145, 146):
-        convert_bc7_ktx2_via_texconv(ktx, texconv, source, destination, width, height, gpu_adapter)
+        convert_bc7_ktx2_via_texconv(
+            ktx, texconv, source, destination, width, height, gpu_adapter
+        )
         return
     if header.depth != 0 or header.layers != 0 or header.faces != 1:
         raise RuntimeError("Nur normale 2D-KTX2-Texturen ohne Array, Cubemap oder 3D-Daten werden unterstützt.")
@@ -540,7 +546,6 @@ def convert_ktx2(
         run_tool(extract_command, "ktx extract")
         if not extracted.is_file():
             raise RuntimeError("ktx extract hat keine PNG-Datei erzeugt.")
-
         command = [str(ktx), "create"]
         if format_name == "VK_FORMAT_UNDEFINED":
             # BasisLZ (ETC1S) and UASTC have no Vulkan format in the KTX2 header.
@@ -920,7 +925,7 @@ class ConverterApp:
 
         top = ttk.Frame(outer)
         top.pack(fill="x")
-        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.7", style="Title.TLabel").pack(side="left", anchor="w")
+        ttk.Label(top, text="MSFS 2024 – Livery 4K Converter 1.8", style="Title.TLabel").pack(side="left", anchor="w")
         language_box = ttk.Frame(top)
         language_box.pack(side="right", padx=(10, 0))
         ttk.Label(language_box, text=self.t("Sprache:", "Language:")).pack(side="left", padx=(0, 6))
@@ -1402,7 +1407,7 @@ class ConverterApp:
         gpu_adapter: Optional[int],
         language: str,
     ) -> None:
-        """Mirror the complete package, then replace only oversized textures."""
+        """Mirror the package and resize oversized textures without overriding material maps."""
         tx = lambda de, en: de if language == "de" else en
         copied = 0
         copy_failed = 0
@@ -1468,10 +1473,14 @@ class ConverterApp:
                             )))
                             continue
                     width, height = get_image_dimensions(file_path)
-                    if max(width, height) > max_size:
+                    needs_resize = max(width, height) > max_size
+                    if needs_resize:
                         scale = max_size / max(width, height)
                         new_width = max(1, int(round(width * scale)))
                         new_height = max(1, int(round(height * scale)))
+                    else:
+                        new_width, new_height = width, height
+                    if needs_resize:
                         prepared.append((file_path, width, height, new_width, new_height))
                 except Exception as exc:
                     unreadable += 1
@@ -1482,8 +1491,8 @@ class ConverterApp:
 
             self.events.put(("log", tx(f"Unterstützte Texturdateien: {supported_count}", f"Supported texture files: {supported_count}")))
             self.events.put(("log", tx(
-                f"Zu verkleinernde Texturen: {len(prepared)}; nicht lesbar: {unreadable}; nicht unterstützt: {unsupported}",
-                f"Textures to resize: {len(prepared)}; unreadable: {unreadable}; unsupported: {unsupported}"
+                f"Zu verarbeitende Texturen: {len(prepared)}; nicht lesbar: {unreadable}; nicht unterstützt: {unsupported}",
+                f"Textures to process: {len(prepared)}; unreadable: {unreadable}; unsupported: {unsupported}"
             )))
 
             total_work = max(len(files) + len(prepared), 1)
@@ -1647,8 +1656,8 @@ class ConverterApp:
                 elif kind == "finished":
                     _, result_text, copied, copy_failed, converted, failed, unreadable, unsupported, layout_result = event
                     summary = self.t(
-                        f"{result_text} Kopiert: {copied} (Fehler: {copy_failed}) | Verkleinert: {converted} (Fehler: {failed}) | Nicht lesbar: {unreadable} | Nicht unterstützt: {unsupported}",
-                        f"{result_text} Copied: {copied} (errors: {copy_failed}) | Resized: {converted} (errors: {failed}) | Unreadable: {unreadable} | Unsupported: {unsupported}"
+                        f"{result_text} Kopiert: {copied} (Fehler: {copy_failed}) | Verarbeitet: {converted} (Fehler: {failed}) | Nicht lesbar: {unreadable} | Nicht unterstützt: {unsupported}",
+                        f"{result_text} Copied: {copied} (errors: {copy_failed}) | Processed: {converted} (errors: {failed}) | Unreadable: {unreadable} | Unsupported: {unsupported}"
                     )
                     self._append_log(summary)
                     self._append_log(self.t(f"layout.json: {layout_result}", f"layout.json: {layout_result}"))

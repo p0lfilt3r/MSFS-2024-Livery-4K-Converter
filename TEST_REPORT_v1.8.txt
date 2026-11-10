@@ -1,23 +1,26 @@
 MSFS 2024 – Livery 4K Converter 1.8 – Test Report
 
-Scope
-- Surface-finish checkbox and roughness/metalness sliders removed.
-- No deliberate overrides of COMP/ORM material channels remain.
-- Single-package and recursive batch workflows retain the standard resize behavior.
+Scope of this revision
+- Removed the surface-finish checkbox.
+- Removed the matte/gloss and metalness sliders.
+- Removed all code paths that deliberately override COMP/ORM material channels.
+- Single and batch processing always use the normal resize behavior.
 
 Automated checks
 - Python syntax compilation: PASS.
 - Module import: PASS.
-- Source contains no surface-finish controls or material-override symbols: PASS.
-- Below-limit texture copy path is byte-preserving: PASS.
-- Single-package worker and recursive batch workflow run without surface-override parameters: PASS.
-- Sample source package remains unchanged: PASS.
+- No remaining surface-finish controls or material-override symbols in the application source: PASS.
+- No separate COMP/ORM processing path remains: PASS.
+- Textures below the configured size limit are copied byte-for-byte by the package-copy stage: PASS.
+- Single-package worker completes without surface-override arguments: PASS.
+- Recursive batch discovery and package processing complete without surface-override arguments: PASS.
+- Source package remains unchanged in sample-copy checks: PASS.
 - ZIP archive integrity: PASS.
 
 Material behavior
 - Textures within the configured size limit, including COMP/ORM maps, are copied byte-for-byte.
-- Oversized textures are resized and re-encoded by the standard pipeline. Resampling, mipmap generation and compression may cause pixel-level differences.
-- The converter does not deliberately overwrite Roughness, Metallic, Ambient Occlusion or alpha values.
+- Oversized textures are resized and re-encoded by the standard pipeline. Resampling, mipmap generation and compression may cause pixel-level differences. The converter does not deliberately overwrite Roughness, Metallic, Ambient Occlusion or alpha values.
+- Source files are not modified.
 
 Not verified in this environment
 - Native Windows execution with the user's installed texconv.exe and ktx.exe.
@@ -26,5 +29,5 @@ Not verified in this environment
 
 Recommended final check
 1. Start the application and confirm that no surface-finish checkbox or sliders are present.
-2. Convert a test livery containing below-limit COMP/ORM maps and compare source and output files byte-for-byte.
-3. Test oversized DDS/KTX2 textures in MSFS 2024.
+2. Convert a test livery containing COMP/ORM maps that are already below the selected size limit; compare source and output files byte-for-byte.
+3. Convert a test livery containing oversized DDS/KTX2 textures and inspect the output in MSFS 2024.

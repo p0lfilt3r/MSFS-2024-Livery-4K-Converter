@@ -11,7 +11,8 @@ Version 1.8 – Original Material Preservation
 Version 1.7 – Batch Processing and Responsive Window
 - Responsive startup window sized to the available display.
 - Right-side vertical scrollbar when the full interface does not fit.
-- Selecting a source folder automatically fills the sibling destination path with _4K appended.
+- Corrected scrollbar placement in the v1.7 test package; the scrollbar is now on the right edge.
+- Source selection automatically fills the sibling destination path with _4K appended.
 - Destination folders are created automatically when conversion starts.
 - Recursive batch discovery of nested MSFS livery package roots.
 - One sibling *_4K output folder per source livery.
@@ -21,3 +22,12 @@ Version 1.7 – Batch Processing and Responsive Window
 Version 1.6 – KTX2P handling
 - Removes copied .ktx2p files from the destination package after a successful KTX2 texture resize.
 - Logs source/destination KTX2 file-size totals as an estimate.
+
+Version 1.5 – German/English interface
+- Added selectable German and English UI.
+
+Version 1.4 – Full package copy
+- Copies complete livery package trees and optionally rebuilds layout.json.
+
+Version 1.3 – NVIDIA/BC7
+- Added DirectCompute GPU acceleration for BC7 texture conversion.
